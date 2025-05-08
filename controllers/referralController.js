@@ -1,4 +1,4 @@
-const Referral = require("../models/Referral");
+const Referral = require("../models/referral");
 const User = require("../models/user");
 
 // @desc    Get all referral logs
