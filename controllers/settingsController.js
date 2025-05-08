@@ -1,11 +1,11 @@
-const Setting = require("../models/Setting");
+const Setting = require("../models/setting");
 
 // @desc Get current settings
 exports.getSettings = async (req, res) => {
   try {
     let settings = await Setting.findOne();
     if (!settings) {
-      settings = new Settings();
+      settings = new Setting();
       await settings.save();
     }
     res.json(settings);

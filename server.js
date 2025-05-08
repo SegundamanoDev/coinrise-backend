@@ -10,7 +10,7 @@ const app = express();
 app.use(express.json());
 app.use(
   cors({
-    origin: "https://coinrise-khaki.vercel.app",
+    origin: "https://coinrise-khaki.vercel.app ",
   })
 );
 app.use(morgan("dev"));
