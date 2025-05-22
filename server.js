@@ -1,37 +1,46 @@
-require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
+const dotenv = require("dotenv");
 const cors = require("cors");
 const morgan = require("morgan");
 
+dotenv.config();
+
 const app = express();
-
-// Middleware
-app.use(express.json());
-app.use(
-  cors({
-    origin: "https://coinrise-khaki.vercel.app ",
-  })
-);
 app.use(morgan("dev"));
+app.use(express.json());
+app.use(cors());
 
-// Route Imports
-app.use("/api/auth", require("./routes/authRoutes"));
-app.use("/api/users", require("./routes/userRoutes"));
-app.use("/api/admin", require("./routes/adminRoutes"));
-app.use("/api/settings", require("./routes/settingsRoutes"));
-app.use("/api/deposits", require("./routes/depositRoutes"));
-app.use("/api/withdrawals", require("./routes/withdrawalRoutes"));
-// app.use("/api/investments", require("./routes/investmentRoutes"));
-// app.use("/api/plans", require("./routes/planRoutes"));
-app.use("/api/referrals", require("./routes/referralRoutes"));
-app.use("/api/transactions", require("./routes/transactionRoutes"));
+// Import route files
+const authRoutes = require("./routes/auth");
+const userRoutes = require("./routes/user");
+const dashboardRoutes = require("./routes/dashboard");
+const transactionRoutes = require("./routes/transaction");
+const investmentRoutes = require("./routes/investment");
+const investmentPlanRoutes = require("./routes/investmentPlan");
+const adminRoutes = require("./routes/admin");
+const startCronJobs = require("./utils/cronJobs");
 
-// DB and Server Init
-const PORT = process.env.PORT || 5000;
+// Use routes
+app.use("/api/investments", investmentRoutes);
+app.use("/api/plans", investmentPlanRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/transactions", transactionRoutes);
+app.use("/api/admin", adminRoutes);
+
+startCronJobs();
+
+// Connect to MongoDB
 mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() =>
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
-  )
-  .catch((err) => console.error("DB connection error:", err));
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => console.log("MongoDB connected"))
+  .catch((err) => console.error(err));
+
+// Start server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
