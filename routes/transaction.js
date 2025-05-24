@@ -13,6 +13,22 @@ router.post("/request", verifyToken, async (req, res) => {
       return res.status(400).json({ message: "Missing required fields." });
     }
 
+    // Get the user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    // Balance check for withdrawals
+    if (type === "withdrawal") {
+      if (amount > user.balance) {
+        return res
+          .status(400)
+          .json({ message: "Insufficient balance for this withdrawal." });
+      }
+    }
+
+    // Create the transaction
     const transaction = await Transaction.create({
       user: userId,
       type,
@@ -22,16 +38,18 @@ router.post("/request", verifyToken, async (req, res) => {
       details: details || {},
     });
 
-    // Optional: immediately deduct withdrawal amount
+    // Deduct balance if it's a withdrawal
     if (type === "withdrawal") {
-      await User.findByIdAndUpdate(userId, { $inc: { balance: -amount } });
+      user.balance -= amount;
+      await user.save();
     }
-    console.log(transaction);
+
     res.status(201).json(transaction);
   } catch (error) {
     res.status(500).json({ message: "Failed to create transaction", error });
   }
 });
+
 router.get("/admin", verifyToken, async (req, res) => {
   try {
     const { type, status } = req.query;
