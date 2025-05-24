@@ -136,7 +136,7 @@ router.get("/my", verifyToken, async (req, res) => {
     const transactions = await Transaction.find({ user: userId }).sort({
       createdAt: -1,
     });
-    console.log(transactions);
+
     res.status(200).json(transactions);
   } catch (error) {
     res
