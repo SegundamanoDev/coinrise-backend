@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const nodemailer = require("nodemailer");
 const Transaction = require("../models/transaction");
 
 function generateReferralCode() {
@@ -109,6 +111,7 @@ router.put("/update-password/:userId", async (req, res) => {
 // POST /api/forgot-password
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
+  console.log(email);
   try {
     const user = await User.findOne({ email });
     if (!user)
@@ -124,7 +127,7 @@ router.post("/forgot-password", async (req, res) => {
     user.resetPasswordExpire = resetTokenExpire;
     await user.save();
 
-    const resetUrl = `https://your-frontend-url.com/reset-password/${resetToken}`;
+    const resetUrl = `https://coinrise-khaki.vercel.app/reset-password/${resetToken}`;
 
     // Email configuration
     const transporter = nodemailer.createTransport({
