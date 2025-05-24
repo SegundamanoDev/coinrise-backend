@@ -14,6 +14,8 @@ const userSchema = new mongoose.Schema({
   balance: { type: Number, default: 0 },
   totalProfits: { type: Number, default: 0 },
   referralEarnings: { type: Number, default: 0 },
+  resetPasswordToken: { type: String },
+  resetPasswordExpire: { type: Date },
 });
 
 // Hash password before saving or updating
