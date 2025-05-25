@@ -45,21 +45,25 @@ router.get("/", verifyToken, async (req, res) => {
       },
     ]);
 
-    const totalDeposited = totalDepositedResult[0]?.total || 0;
-    const pendingWithdrawals = pendingWithdrawalsResult[0]?.total || 0;
+    const totalDeposited = totalDepositedResult?.[0]?.total ?? 0;
+    const pendingWithdrawals = pendingWithdrawalsResult?.[0]?.total ?? 0;
 
-    const availableBalance =
-      user.balance + user.totalProfits + user.referralEarnings;
+    const availableBalance = user.balance || 0;
 
     res.json({
+      fullName: user.fullName,
+      email: user.email,
+      accountType: user.accountType || "User",
+      referralCode: user.referralCode,
+      currency: user.currency || "USD",
       availableBalance,
       totalDeposited,
-      totalProfits: user.totalProfits,
-      referralEarnings: user.referralEarnings,
+      totalProfits: user.totalProfits || 0,
+      referralEarnings: user.referralEarnings || 0,
       pendingWithdrawals,
-      referralCode: user.referralCode,
     });
   } catch (err) {
+    console.error("Dashboard Error:", err);
     res.status(500).json({ message: err.message });
   }
 });

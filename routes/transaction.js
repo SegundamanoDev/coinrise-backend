@@ -59,7 +59,7 @@ router.get("/admin", verifyToken, async (req, res) => {
 
     const transactions = await Transaction.find(filter).populate(
       "user",
-      "fullName email balance"
+      "fullName email balance, currency"
     );
     console.log(transactions);
     res.status(200).json(transactions);
