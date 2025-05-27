@@ -169,7 +169,6 @@ router.patch("/transactions-update", verifyToken, async (req, res) => {
   }
 });
 
-
 router.get("/my", verifyToken, async (req, res) => {
   try {
     const userId = req.user._id;
@@ -199,6 +198,18 @@ router.get("/deposits-history", verifyToken, async (req, res) => {
     res
       .status(500)
       .json({ message: "Failed to fetch deposit history", error: err.message });
+  }
+});
+
+router.get("/:id", verifyToken, async (req, res) => {
+  try {
+    const transaction = await Transaction.findById(req.params.id);
+
+    res.json(transaction);
+  } catch (err) {
+    res
+      .status(500)
+      .json({ message: "Failed to fetch transaction", error: err.message });
   }
 });
 
