@@ -67,60 +67,99 @@ router.get("/admin", verifyToken, async (req, res) => {
     res.status(500).json({ message: "Failed to fetch transactions", error });
   }
 });
+
 router.patch("/transactions-update", verifyToken, async (req, res) => {
   try {
     const { id, action } = req.body;
 
-    // Validate request
     if (!id || !["approve", "decline"].includes(action)) {
       return res.status(400).json({ message: "Invalid request." });
     }
 
-    // Find the transaction
     const transaction = await Transaction.findById(id);
     if (!transaction) {
       return res.status(404).json({ message: "Transaction not found." });
     }
 
-    // Check if already processed
     if (transaction.status !== "pending") {
       return res
         .status(400)
         .json({ message: "Transaction already processed." });
     }
 
-    // Find the user
     const user = await User.findById(transaction.user);
     if (!user) {
       return res.status(404).json({ message: "User not found." });
     }
 
-    // Determine new status
     const newStatus = action === "approve" ? "approved" : "declined";
 
-    // Handle balance updates
+    // ======================
+    // ✅ HANDLE TRANSACTION
+    // ======================
+
     if (action === "approve") {
-      if (transaction.type === "deposit") {
-        user.balance += transaction.amount;
+      switch (transaction.type) {
+        case "deposit":
+          user.balance += transaction.amount;
+          break;
+
+        case "withdrawal":
+          // Do nothing — user already had this amount deducted on request
+          break;
+
+        case "investment":
+          // Deduction already done when investment was placed
+          // Optionally: mark investment as active in user's profile
+          break;
+
+        case "referral":
+          user.balance += transaction.amount;
+          break;
+
+        default:
+          return res
+            .status(400)
+            .json({ message: "Unsupported transaction type." });
       }
-      // No need to update balance on approved withdrawal; it was deducted on creation
     }
 
     if (action === "decline") {
-      if (transaction.type === "withdrawal") {
-        user.balance += transaction.amount; // refund
+      switch (transaction.type) {
+        case "deposit":
+          // No refund needed
+          break;
+
+        case "withdrawal":
+          user.balance += transaction.amount; // refund withdrawal
+          break;
+
+        case "investment":
+          user.balance += transaction.amount; // refund investment
+          break;
+
+        case "referral":
+          // Optional: ignore or reverse bonus
+          break;
+
+        default:
+          return res
+            .status(400)
+            .json({ message: "Unsupported transaction type." });
       }
     }
 
-    // Update transaction status and save
+    // ======================
+    // ✅ SAVE & RESPOND
+    // ======================
     transaction.status = newStatus;
     await transaction.save({ validateBeforeSave: false });
-
     await user.save();
 
     return res.status(200).json({
-      message: `Transaction ${newStatus} successfully.`,
+      message: `Transaction ${newStatus}`,
       transaction,
+      balance: user.balance,
     });
   } catch (error) {
     console.error("Transaction update error:", error);
@@ -129,6 +168,7 @@ router.patch("/transactions-update", verifyToken, async (req, res) => {
       .json({ message: "Failed to update transaction", error });
   }
 });
+
 
 router.get("/my", verifyToken, async (req, res) => {
   try {

@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
+const { verifyToken } = require("../middlewares/auth");
 
 router.get("/stats/count", async (req, res) => {
   try {
@@ -69,6 +70,18 @@ router.post("/topup-profit/:userId", async (req, res) => {
     res.json({ message: "Profit topped up successfully", user });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+router.get("/profile", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("-password");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
   }
 });
 

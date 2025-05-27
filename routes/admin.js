@@ -112,7 +112,6 @@ router.get("/dashboard", verifyToken, async (req, res) => {
 
 // GET /admin/investments - Get all investments (with optional filters)
 router.get("/investments", verifyToken, isAdmin, async (req, res) => {
-  console.log(req.user);
   try {
     const { status, plan, search, startDate, endDate } = req.query;
     const query = {};
