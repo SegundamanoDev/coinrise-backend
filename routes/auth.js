@@ -1,17 +1,21 @@
+// routes/auth.js (or wherever your auth routes are defined)
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
-const Transaction = require("../models/transaction");
+const Transaction = require("../models/transaction"); // Assuming this model is defined elsewhere
 
+// Define constants
+const REFERRAL_BONUS = 15;
+
+// Helper function to generate referral code
 function generateReferralCode() {
   return Math.random().toString(36).substr(2, 8).toUpperCase();
 }
 
-const REFERRAL_BONUS = 15;
-
+// POST /api/auth/register
 router.post("/register", async (req, res) => {
   try {
     const { fullName, email, password, country, currency, phone, referredBy } =
@@ -38,8 +42,11 @@ router.post("/register", async (req, res) => {
       phone,
       referralCode,
       referredBy,
+      // When a new user registers, this is their first "login"
+      lastLoginAt: new Date(),
+      lastLoginIpAddress: req.ip || req.connection.remoteAddress,
     });
-    console.log(newUser);
+    console.log("New user registering:", newUser.email); // More descriptive log
     await newUser.save();
 
     if (referredBy) {
@@ -60,9 +67,23 @@ router.post("/register", async (req, res) => {
       }
     }
 
+    // Optionally, log in the user immediately after registration
+    // and send a token/user object, similar to the login route.
+    // For now, keeping it as a simple success message.
     return res.status(201).json({
       success: true,
       message: "Registered successfully",
+      // You might want to return user data or a token here too
+      // user: {
+      //   id: newUser._id,
+      //   fullName: newUser.fullName,
+      //   email: newUser.email,
+      //   currency: newUser.currency,
+      //   balance: newUser.balance,
+      //   lastLoginAt: newUser.lastLoginAt,
+      //   lastLoginIpAddress: newUser.lastLoginIpAddress,
+      //   // ... other fields you want to expose
+      // }
     });
   } catch (error) {
     console.error("Registration error:", error);
@@ -70,24 +91,58 @@ router.post("/register", async (req, res) => {
   }
 });
 
-module.exports = router;
-
-// POST /api/login
+// POST /api/auth/login
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
   const user = await User.findOne({ email });
-  if (!user) return res.status(400).json({ error: "Invalid credentials" });
+
+  if (!user) {
+    return res.status(400).json({ error: "Invalid credentials" });
+  }
 
   const isMatch = await user.comparePassword(password);
-  if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
+  if (!isMatch) {
+    return res.status(400).json({ error: "Invalid credentials" });
+  }
+
+  // --- NEW LOGIC FOR LAST LOGIN UPDATE ---
+  user.lastLoginAt = new Date(); // Set current timestamp
+  // req.ip is generally preferred in Express as it handles X-Forwarded-For headers
+  // if your app is behind a proxy/load balancer.
+  user.lastLoginIpAddress = req.ip || req.connection.remoteAddress;
+  await user.save(); // Save the updated user to the database
+  // --- END NEW LOGIC ---
 
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
     expiresIn: "7d",
   });
-  res.json({ token: token, user: user });
+
+  // Send back the token and the updated user object
+  // Mongoose documents, when converted to JSON, will include all fields by default
+  // unless explicitly excluded in the schema or query.
+  res.json({
+    token: token,
+    user: {
+      _id: user._id,
+      fullName: user.fullName,
+      email: user.email,
+      country: user.country,
+      currency: user.currency,
+      phone: user.phone,
+      isAdmin: user.isAdmin,
+      referralCode: user.referralCode,
+      referredBy: user.referredBy,
+      balance: user.balance,
+      totalProfits: user.totalProfits,
+      referralEarnings: user.referralEarnings,
+      lastLoginAt: user.lastLoginAt, // Include the new field
+      lastLoginIpAddress: user.lastLoginIpAddress, // Include the new field
+      // Do NOT send password or reset tokens
+    },
+  });
 });
 
-// PUT /api/update-password/:userId
+// PUT /api/auth/update-password/:userId
 router.put("/update-password/:userId", async (req, res) => {
   const { oldPassword, newPassword, confirmPassword } = req.body;
   const user = await User.findById(req.params.userId);
@@ -102,16 +157,16 @@ router.put("/update-password/:userId", async (req, res) => {
     return res.status(400).json({ error: "Passwords do not match" });
   }
 
-  user.password = newPassword; // Will be hashed via pre-save
+  user.password = newPassword; // Will be hashed via pre-save hook
   await user.save();
 
   res.json({ message: "Password updated successfully" });
 });
 
-// POST /api/forgot-password
+// POST /api/auth/forgot-password
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
-  console.log(email);
+  console.log("Forgot password request for:", email);
   try {
     const user = await User.findOne({ email });
     if (!user)
@@ -160,7 +215,7 @@ router.post("/forgot-password", async (req, res) => {
   }
 });
 
-// PUT /api/reset-password/:token
+// PUT /api/auth/reset-password/:token
 router.put("/reset-password/:token", async (req, res) => {
   const { newPassword, confirmPassword } = req.body;
 
