@@ -27,6 +27,11 @@ router.get("/stats/count", async (req, res) => {
 // Get all users
 router.get("/", async (req, res) => {
   try {
+    if (req.user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "Access denied. Admin rights required." });
+    }
     const users = await User.find().sort({ createdAt: -1 });
     res.json(users);
   } catch (err) {
@@ -37,6 +42,11 @@ router.get("/", async (req, res) => {
 // Get single user by ID
 router.get("/:id", async (req, res) => {
   try {
+    if (req.user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "Access denied. Admin rights required." });
+    }
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
@@ -46,8 +56,13 @@ router.get("/:id", async (req, res) => {
 });
 
 // Update user
-router.put("/:id", async (req, res) => {
+router.put("/:id", verifyToken, async (req, res) => {
   try {
+    if (req.user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "Access denied. Admin rights required." });
+    }
     const user = await User.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
     });
@@ -105,6 +120,11 @@ router.put("/profile", verifyToken, async (req, res) => {
 router.post("/topup-profit/:userId", async (req, res) => {
   const { amount } = req.body;
   try {
+    if (req.user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "Access denied. Admin rights required." });
+    }
     const user = await User.findById(req.params.userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -118,8 +138,13 @@ router.post("/topup-profit/:userId", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", verifyToken, async (req, res) => {
   try {
+    if (req.user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "Access denied. Admin rights required." });
+    }
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json({ message: "User deleted" });

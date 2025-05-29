@@ -2,7 +2,7 @@
 
 const express = require("express");
 const { verifyToken } = require("../middlewares/auth.js"); // Your JWT verification middleware
-const Transaction = require("../models/transaction.js");
+const Transaction = require("../models/Transaction.js");
 const User = require("../models/User.js");
 const router = express.Router();
 const upload = require("../utils/multer.js"); // Your Multer setup for file uploads
@@ -45,14 +45,10 @@ const updateUserBalance = async (
         // You'll need to define your upgrade logic here.
         // For example, if you have a tiered system (Standard, Silver, Gold, Diamond)
         // You might set a specific level, or increment based on previous level.
-
         // For simplicity, let's just set them to 'Silver' as a base upgrade.
         // In a real app, you might map amounts to levels.
-        user.accountLevel = "Silver"; // Or derive from transaction details if user picked a level
+        // Or derive from transaction details if user picked a level
         // user.upgradeCount = (user.upgradeCount || 0) + 1; // If you track upgrade counts
-        console.log(
-          `User ${user.username} (ID: ${userId}) account upgraded to ${user.accountLevel} via transaction ${transactionId}`
-        );
       }
       // If an upgrade is declined, no balance change as it was a fee,
       // but you might want to delete the uploaded proof file if it's no longer needed.
@@ -66,81 +62,100 @@ const updateUserBalance = async (
 router.post(
   "/upgrade-request",
   verifyToken,
-  upload.single("proof"), // 'proof' must match the field name in FormData from frontend
+  upload.single("proof"),
   async (req, res) => {
-    try {
-      const { amount, coin } = req.body; // Expecting fixed 'amount' and 'coin' from frontend
-      const userId = req.user._id;
-      const paymentProofPath = req.file
-        ? `/uploads/${req.file.filename}`
-        : undefined;
+    const { amount, coin, type, planId, planName } = req.body; // Added planId, planName
 
-      if (!amount || !coin || !paymentProofPath) {
+    // Input validation
+    if (!amount || !coin || !type) {
+      if (req.file) {
+        // Clean up uploaded file if validation fails
+        fs.unlinkSync(req.file.path);
+      }
+      return res
+        .status(400)
+        .json({ message: "Amount, coin, and type are required." });
+    }
+
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      if (req.file) fs.unlinkSync(req.file.path);
+      return res
+        .status(400)
+        .json({ message: "Invalid amount. Must be a positive number." });
+    }
+
+    // Proof of payment is required for 'deposit' and 'upgrade_deposit' types
+    if ((type === "deposit" || type === "upgrade_deposit") && !req.file) {
+      return res.status(400).json({
+        message: "Proof of payment is required for this transaction type.",
+      });
+    }
+
+    // Specific validation for 'upgrade_deposit' type
+    if (type === "upgrade_deposit") {
+      if (!planId || !planName) {
+        if (req.file) fs.unlinkSync(req.file.path);
         return res.status(400).json({
           message:
-            "Amount, coin, and proof of payment are required for upgrade request.",
+            "Plan ID and Plan Name are required for upgrade transactions.",
         });
       }
+      // Optional: Add server-side validation to ensure planId and amount match predefined plans
+      // const selectedPlan = UPGRADE_PLANS.find(p => p.id === planId); // If you have UPGRADE_PLANS on backend
+      // if (!selectedPlan || selectedPlan.amount !== parsedAmount) {
+      //     if (req.file) fs.unlinkSync(req.file.path);
+      //     return res.status(400).json({ message: "Invalid plan or amount for upgrade." });
+      // }
+    }
 
-      const user = await User.findById(userId);
+    try {
+      const user = await User.findById(req.user._id);
       if (!user) {
-        // If user is not found, delete the uploaded file to prevent clutter
         if (req.file) fs.unlinkSync(req.file.path);
         return res.status(404).json({ message: "User not found." });
       }
 
-      // Check if user is already at the highest level or has a pending upgrade
-      // You might add logic here to prevent multiple pending upgrades or upgrading beyond max level
-      // Example:
-      // if (user.accountLevel === "Diamond") {
-      //   if (req.file) fs.unlinkSync(req.file.path);
-      //   return res.status(400).json({ message: "Your account is already at the highest level." });
-      // }
-      // const existingPendingUpgrade = await Transaction.findOne({
-      //   user: userId,
-      //   type: "account_upgrade",
-      //   status: "pending"
-      // });
-      // if (existingPendingUpgrade) {
-      //   if (req.file) fs.unlinkSync(req.file.path);
-      //   return res.status(400).json({ message: "You have a pending account upgrade request." });
-      // }
-
-      const transaction = await Transaction.create({
-        user: userId,
-        type: "account_upgrade", // Explicitly set type
-        amount: Number(amount),
-        coin,
-        method: "Crypto", // Assuming crypto payment for upgrade
-        paymentProof: paymentProofPath,
+      const transactionData = {
+        user: req.user._id,
+        amount: parsedAmount,
+        coin: coin,
+        type: type,
         status: "pending",
-        details: {
-          // You could add targetLevel if your frontend sends it
-          // targetLevel: req.body.targetLevel,
-          // userWallet: req.body.userWallet // if collecting user's sending wallet
-        },
-      });
+      };
 
-      res.status(201).json(transaction);
-    } catch (error) {
-      console.error("Error creating account upgrade request:", error);
+      // Add proofOfPayment if a file was uploaded (for deposit/upgrade_deposit)
       if (req.file) {
-        // If an error occurred after file upload, delete the file
+        transactionData.proofOfPayment = `/uploads/proofs/${req.file.filename}`;
+      }
+
+      // Add plan details if it's an upgrade
+      if (type === "upgrade_deposit") {
+        transactionData.planId = planId;
+        transactionData.planName = planName;
+      }
+
+      const transaction = new Transaction(transactionData);
+      await transaction.save();
+
+      res.status(201).json({
+        message: `${
+          type === "upgrade_deposit" ? "Account upgrade" : "Deposit"
+        } request submitted successfully! Awaiting admin approval.`,
+        transaction: transaction,
+      });
+    } catch (error) {
+      console.error("Error initiating transaction:", error);
+      // Delete the uploaded file if there's a server error
+      if (req.file) {
         fs.unlinkSync(req.file.path);
       }
-      if (error.name === "ValidationError") {
-        return res
-          .status(400)
-          .json({ message: error.message, errors: error.errors });
-      }
-      res.status(500).json({
-        message: "Failed to create account upgrade request",
-        error: error.message,
-      });
+      res
+        .status(500)
+        .json({ message: "Server error. Please try again later." });
     }
   }
 );
-
 // --- Existing Routes (with minor adjustments) ---
 
 // Route for requesting deposit and withdrawal

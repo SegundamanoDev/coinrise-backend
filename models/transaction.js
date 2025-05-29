@@ -1,4 +1,4 @@
-// models/transaction.js (Update the type enum and paymentProof field)
+// models/Transaction.js (Example - assuming Mongoose)
 
 const mongoose = require("mongoose");
 
@@ -7,75 +7,57 @@ const transactionSchema = mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
-      ref: "User", // Link to the User model
-    },
-    type: {
-      type: String,
-      required: true,
-      enum: [
-        "deposit",
-        "withdrawal",
-        "investment",
-        "referral_bonus",
-        "investment_return",
-        "account_upgrade", // NEW: for account upgrade payments
-      ],
+      ref: "User",
     },
     amount: {
       type: Number,
       required: true,
-      min: 0,
+    },
+    coin: {
+      type: String,
+      required: true,
+    },
+    type: {
+      type: String, // 'deposit', 'withdrawal', 'upgrade_deposit', 'referral_bonus', etc.
+      required: true,
+      enum: ["deposit", "withdrawal", "upgrade_deposit", "referral_bonus"], // Add 'upgrade_deposit'
+    },
+    proofOfPayment: {
+      type: String, // Path to the uploaded image
+      required: function () {
+        // Only required for deposit/upgrade_deposit
+        return this.type === "deposit" || this.type === "upgrade_deposit";
+      },
     },
     status: {
       type: String,
       required: true,
-      enum: ["pending", "approved", "declined", "completed", "failed"], // 'approved' and 'declined' are typically final states
-      default: "pending",
+      default: "pending", // 'pending', 'approved', 'rejected'
+      enum: ["pending", "approved", "rejected"],
     },
-    coin: {
-      type: String, // e.g., "BTC", "ETH", "USDT"
+    // --- New fields for upgrade transactions ---
+    planId: {
+      type: String, // Store the ID of the plan (e.g., 'basic', 'standard', 'premium')
       required: function () {
-        // Coin is required for crypto-based transactions
-        return (
-          this.type === "deposit" ||
-          this.type === "withdrawal" ||
-          this.type === "account_upgrade"
-        );
+        return this.type === "upgrade_deposit";
       },
     },
-    method: {
-      type: String, // e.g., "Crypto", "Bank Transfer", "Staking Plan"
+    planName: {
+      type: String, // Store the human-readable name of the plan (e.g., 'Basic Tier')
       required: function () {
-        return (
-          this.type === "deposit" ||
-          this.type === "withdrawal" ||
-          this.type === "investment" ||
-          this.type === "account_upgrade"
-        );
-      },
-      default: "Crypto", // Default for crypto payments
-    },
-    paymentProof: {
-      type: String, // URL or path to the uploaded proof of payment image
-      required: function () {
-        // Required for deposit and account upgrade
-        return this.type === "deposit" || this.type === "account_upgrade";
+        return this.type === "upgrade_deposit";
       },
     },
-    details: {
-      type: Object, // Flexible field for additional transaction details (e.g., wallet address, txId, plan name for investment)
-      default: {},
+    // --- End new fields ---
+    notes: {
+      type: String,
     },
-    // If you plan to store the target upgrade level within the transaction
-    // targetAccountLevel: {
-    //   type: String,
-    //   enum: ["Silver", "Gold", "Diamond"], // Levels user can upgrade to
-    //   required: function() { return this.type === 'account_upgrade'; }
-    // },
   },
   {
     timestamps: true,
   }
 );
 
-module.exports = mongoose.model("Transaction", transactionSchema);
+module.exports =
+  mongoose.models.Transaction ||
+  mongoose.model("Transaction", transactionSchema);

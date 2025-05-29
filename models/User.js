@@ -19,9 +19,13 @@ const userSchema = new mongoose.Schema(
     country: String,
     currency: String,
     phone: String,
-    address: String, // Added for consistency with frontend form
-    city: String, // Added for consistency with frontend form
-    zip: String, // Added for consistency with frontend form
+    address: String,
+    city: String,
+    zip: String,
+    currentPlan: {
+      type: String, // e.g., 'basic', 'standard', 'premium', or 'free'
+      default: "free", // Default plan for new users
+    },
     role: {
       type: String,
       enum: ["user", "admin"],
@@ -34,11 +38,6 @@ const userSchema = new mongoose.Schema(
     referralEarnings: { type: Number, default: 0 },
     resetPasswordToken: { type: String },
     resetPasswordExpire: { type: Date },
-    accountLevel: {
-      type: String,
-      enum: ["Standard", "Silver", "Gold", "Diamond"], // Example levels
-      default: "Standard",
-    },
     // --- NEW FIELDS FOR LAST LOGIN ---
     lastLoginAt: { type: Date }, // Stores the timestamp of the last login
     lastLoginIpAddress: { type: String }, // Stores the IP address of the last login
