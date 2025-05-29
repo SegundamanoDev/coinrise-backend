@@ -5,12 +5,28 @@ const bcrypt = require("bcryptjs");
 const userSchema = new mongoose.Schema(
   {
     fullName: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
+    email: {
+      type: String,
+      required: [true, "Please add an email"],
+      unique: true,
+      trim: true,
+      match: [
+        /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/,
+        "Please enter a valid email",
+      ],
+    },
     password: { type: String, required: true },
     country: String,
     currency: String,
     phone: String,
-    isAdmin: { type: Boolean, default: false },
+    address: String, // Added for consistency with frontend form
+    city: String, // Added for consistency with frontend form
+    zip: String, // Added for consistency with frontend form
+    role: {
+      type: String,
+      enum: ["user", "admin"],
+      default: "user",
+    },
     referralCode: { type: String, unique: true },
     referredBy: String,
     balance: { type: Number, default: 0 },
@@ -18,6 +34,11 @@ const userSchema = new mongoose.Schema(
     referralEarnings: { type: Number, default: 0 },
     resetPasswordToken: { type: String },
     resetPasswordExpire: { type: Date },
+    accountLevel: {
+      type: String,
+      enum: ["Standard", "Silver", "Gold", "Diamond"], // Example levels
+      default: "Standard",
+    },
     // --- NEW FIELDS FOR LAST LOGIN ---
     lastLoginAt: { type: Date }, // Stores the timestamp of the last login
     lastLoginIpAddress: { type: String }, // Stores the IP address of the last login

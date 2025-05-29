@@ -1,8 +1,11 @@
+// server.js
+
 const express = require("express");
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const morgan = require("morgan");
+const path = require("path"); // Import the 'path' module
 
 dotenv.config();
 
@@ -10,6 +13,13 @@ const app = express();
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(cors());
+
+// --- NEW: Serve static files from the 'uploads' directory ---
+// This line makes files in the 'uploads' folder accessible via /uploads URL
+// For example, if you upload 'image.png' to 'your_project_root/uploads/',
+// it will be accessible at 'http://yourdomain.com/uploads/image.png'
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// --- END NEW ---
 
 // Import route files
 const authRoutes = require("./routes/auth");
