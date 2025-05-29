@@ -39,7 +39,7 @@ const userSchema = new mongoose.Schema(
     resetPasswordToken: { type: String },
     resetPasswordExpire: { type: Date },
     // --- NEW FIELDS FOR LAST LOGIN ---
-    lastLoginAt: { type: Date }, // Stores the timestamp of the last login
+    lastLoginAt: { type: Date, default: Date.now }, // Stores the timestamp of the last login
     lastLoginIpAddress: { type: String }, // Stores the IP address of the last login
     // --- END NEW FIELDS ---
   },

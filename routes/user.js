@@ -15,7 +15,7 @@ router.get("/profile", verifyToken, async (req, res) => {
   }
 });
 
-router.get("/stats/count", async (req, res) => {
+router.get("/stats/count", verifyToken, async (req, res) => {
   try {
     const count = await User.countDocuments();
     res.json({ totalUsers: count });
@@ -25,9 +25,9 @@ router.get("/stats/count", async (req, res) => {
 });
 
 // Get all users
-router.get("/", async (req, res) => {
+router.get("/", verifyToken, async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
+    if (req.user && req.user.role !== "admin") {
       return res
         .status(403)
         .json({ message: "Access denied. Admin rights required." });
@@ -40,14 +40,15 @@ router.get("/", async (req, res) => {
 });
 
 // Get single user by ID
-router.get("/:id", async (req, res) => {
+router.get("/:id", verifyToken, async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
+    if (req.user && req.user.role !== "admin") {
       return res
         .status(403)
         .json({ message: "Access denied. Admin rights required." });
     }
     const user = await User.findById(req.params.id);
+    console.log(user);
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   } catch (err) {
@@ -58,7 +59,7 @@ router.get("/:id", async (req, res) => {
 // Update user
 router.put("/:id", verifyToken, async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
+    if (req.user && req.user.role !== "admin") {
       return res
         .status(403)
         .json({ message: "Access denied. Admin rights required." });
@@ -117,10 +118,10 @@ router.put("/profile", verifyToken, async (req, res) => {
   }
 });
 
-router.post("/topup-profit/:userId", async (req, res) => {
+router.post("/topup-profit/:userId", verifyToken, async (req, res) => {
   const { amount } = req.body;
   try {
-    if (req.user.role !== "admin") {
+    if (req.user && req.user.role !== "admin") {
       return res
         .status(403)
         .json({ message: "Access denied. Admin rights required." });
@@ -140,7 +141,7 @@ router.post("/topup-profit/:userId", async (req, res) => {
 
 router.delete("/:id", verifyToken, async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
+    if (req.user && req.user.role !== "admin") {
       return res
         .status(403)
         .json({ message: "Access denied. Admin rights required." });

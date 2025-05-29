@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
-const Transaction = require("../models/transaction");
+const Transaction = require("../models/Transaction");
 const { verifyToken } = require("../middlewares/auth");
 
 router.get("/", verifyToken, async (req, res) => {

@@ -5,7 +5,7 @@ const { verifyToken } = require("../middlewares/auth.js");
 const Investment = require("../models/Investment.js");
 const InvestmentPlan = require("../models/InvestmentPlan.js");
 const User = require("../models/User.js");
-const Transaction = require("../models/transaction.js");
+const Transaction = require("../models/Transaction.js");
 
 // POST /invest
 router.post("/create", verifyToken, async (req, res) => {

@@ -5,7 +5,7 @@ const User = require("../models/User");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
-const Transaction = require("../models/transaction"); // Assuming this model is defined elsewhere
+const Transaction = require("../models/Transaction"); // Assuming this model is defined elsewhere
 
 // Define constants
 const REFERRAL_BONUS = 15;

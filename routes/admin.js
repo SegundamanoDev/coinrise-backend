@@ -1,6 +1,6 @@
 const express = require("express");
 const { verifyToken, isAdmin } = require("../middlewares/auth.js");
-const Transaction = require("../models/transaction.js");
+const Transaction = require("../models/Transaction.js");
 const Investment = require("../models/Investment.js");
 const User = require("../models/User.js");
 
@@ -8,6 +8,11 @@ const router = express.Router();
 
 router.get("/dashboard", verifyToken, async (req, res) => {
   try {
+    if (req.user && req.user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "Access denied. Admin rights required." });
+    }
     const totalUsers = await User.countDocuments();
 
     const totalDeposited = await Transaction.aggregate([

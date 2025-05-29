@@ -247,7 +247,7 @@ router.post(
 router.get("/admin", verifyToken, async (req, res) => {
   try {
     // Ensure only admins can access this route
-    if (req.user.role !== "admin") {
+    if (req.user && req.user.role !== "admin") {
       return res
         .status(403)
         .json({ message: "Access denied. Admin rights required." });
@@ -278,7 +278,7 @@ router.get("/admin", verifyToken, async (req, res) => {
 router.patch("/transactions-update", verifyToken, async (req, res) => {
   try {
     // Ensure only admins can access this route
-    if (req.user.role !== "admin") {
+    if (req.user && req.user.role !== "admin") {
       return res
         .status(403)
         .json({ message: "Access denied. Admin rights required." });
@@ -402,6 +402,7 @@ router.get("/:id", verifyToken, async (req, res) => {
     // Optional: Ensure user can only fetch their own transactions unless they are admin
     if (
       transaction.user._id.toString() !== req.user._id.toString() &&
+      req.user &&
       req.user.role !== "admin" // Assuming req.user.isAdmin is now req.user.role === 'admin'
     ) {
       return res
