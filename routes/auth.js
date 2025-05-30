@@ -129,7 +129,7 @@ router.post("/login", async (req, res) => {
       country: user.country,
       currency: user.currency,
       phone: user.phone,
-      isAdmin: user.isAdmin,
+      role: user.role,
       referralCode: user.referralCode,
       referredBy: user.referredBy,
       balance: user.balance,

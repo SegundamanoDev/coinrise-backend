@@ -7,8 +7,7 @@ router.post("/create", async (req, res) => {
   try {
     const {
       name,
-      minAmount,
-      maxAmount,
+      amount,
       roiPercent,
       durationHours,
       support,
@@ -16,7 +15,7 @@ router.post("/create", async (req, res) => {
       commissionPercent,
       capitalInsurancePercent,
     } = req.body;
-    console.log(req.body);
+
     const existingPlan = await InvestmentPlan.findOne({ name });
     if (existingPlan)
       return res
@@ -25,8 +24,8 @@ router.post("/create", async (req, res) => {
 
     const plan = new InvestmentPlan({
       name,
-      minAmount,
-      maxAmount,
+      amount,
+
       roiPercent,
       durationHours,
       support,
@@ -48,7 +47,6 @@ router.post("/create", async (req, res) => {
 router.get("/", async (req, res) => {
   try {
     const plans = await InvestmentPlan.find();
-    console.log(plans);
     res.json(plans);
   } catch (err) {
     res

@@ -1,5 +1,3 @@
-// models/Transaction.js (Example - assuming Mongoose)
-
 const mongoose = require("mongoose");
 
 const transactionSchema = mongoose.Schema(
@@ -15,12 +13,19 @@ const transactionSchema = mongoose.Schema(
     },
     coin: {
       type: String,
-      required: true,
+      required: true, // Keep as required, ensure it's provided or has a default
     },
     type: {
-      type: String, // 'deposit', 'withdrawal', 'upgrade_deposit', 'referral_bonus', etc.
+      type: String,
       required: true,
-      enum: ["deposit", "withdrawal", "upgrade_deposit", "referral_bonus"], // Add 'upgrade_deposit'
+      // ADDED 'investment' to the enum
+      enum: [
+        "deposit",
+        "withdrawal",
+        "upgrade_deposit",
+        "referral_bonus",
+        "investment",
+      ],
     },
     proofOfPayment: {
       type: String, // Path to the uploaded image
@@ -32,18 +37,19 @@ const transactionSchema = mongoose.Schema(
     status: {
       type: String,
       required: true,
-      default: "pending", // 'pending', 'approved', 'rejected'
-      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+      // ADDED 'approved', 'processed' and 'completed' to the enum
+      enum: ["pending", "approved", "rejected", "processed", "completed"],
     },
-    // --- New fields for upgrade transactions ---
+    // --- New fields for upgrade transactions (keep as is) ---
     planId: {
-      type: String, // Store the ID of the plan (e.g., 'basic', 'standard', 'premium')
+      type: String,
       required: function () {
         return this.type === "upgrade_deposit";
       },
     },
     planName: {
-      type: String, // Store the human-readable name of the plan (e.g., 'Basic Tier')
+      type: String,
       required: function () {
         return this.type === "upgrade_deposit";
       },
