@@ -48,6 +48,7 @@ router.post("/create", async (req, res) => {
 router.get("/", async (req, res) => {
   try {
     const plans = await InvestmentPlan.find();
+    console.log(plans);
     res.json(plans);
   } catch (err) {
     res

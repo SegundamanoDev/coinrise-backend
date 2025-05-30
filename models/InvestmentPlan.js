@@ -3,8 +3,7 @@ const mongoose = require("mongoose");
 const investmentPlanSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, unique: true, trim: true },
-    minAmount: { type: Number, required: true },
-    maxAmount: { type: Number, required: true },
+    amount: { type: Number, required: true },
     roiPercent: { type: Number, required: true }, // e.g. 20 means 20%
     durationHours: { type: Number, required: true },
     support: { type: Boolean, default: false },
