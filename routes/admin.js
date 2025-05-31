@@ -1,5 +1,5 @@
 const express = require("express");
-const { verifyToken, isAdmin } = require("../middlewares/auth.js");
+const { verifyToken } = require("../middlewares/auth.js");
 const Transaction = require("../models/Transaction.js");
 const Investment = require("../models/Investment.js");
 const User = require("../models/User.js");
@@ -116,8 +116,13 @@ router.get("/dashboard", verifyToken, async (req, res) => {
 });
 
 // GET /admin/investments - Get all investments (with optional filters)
-router.get("/investments", verifyToken, isAdmin, async (req, res) => {
+router.get("/investments", verifyToken, async (req, res) => {
   try {
+    if (req.user && req.user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "Access denied. Admin rights required." });
+    }
     const { status, plan, search, startDate, endDate } = req.query;
     const query = {};
 
@@ -175,8 +180,13 @@ router.get("/investments", verifyToken, isAdmin, async (req, res) => {
 });
 
 // PATCH /admin/investments/:id/complete - Mark investment as completed
-router.patch("/investments/:id/complete", isAdmin, async (req, res) => {
+router.patch("/investments/:id/complete", verifyToken, async (req, res) => {
   try {
+    if (req.user && req.user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "Access denied. Admin rights required." });
+    }
     const investment = await Investment.findById(req.params.id);
     if (!investment)
       return res.status(404).json({ message: "Investment not found." });
@@ -203,8 +213,13 @@ router.patch("/investments/:id/complete", isAdmin, async (req, res) => {
 });
 
 // DELETE /admin/investments/:id - Cancel/delete investment
-router.delete("/investments/:id", isAdmin, async (req, res) => {
+router.delete("/investments/:id", verifyToken, async (req, res) => {
   try {
+    if (req.user && req.user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "Access denied. Admin rights required." });
+    }
     const investment = await Investment.findById(req.params.id);
     if (!investment)
       return res.status(404).json({ message: "Investment not found." });
