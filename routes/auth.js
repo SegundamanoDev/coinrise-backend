@@ -95,7 +95,6 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
   const user = await User.findOne({ email });
-
   if (!user) {
     return res.status(400).json({ error: "Invalid credentials" });
   }
@@ -117,9 +116,6 @@ router.post("/login", async (req, res) => {
     expiresIn: "7d",
   });
 
-  // Send back the token and the updated user object
-  // Mongoose documents, when converted to JSON, will include all fields by default
-  // unless explicitly excluded in the schema or query.
   res.json({
     token: token,
     user: {
@@ -129,6 +125,7 @@ router.post("/login", async (req, res) => {
       country: user.country,
       currency: user.currency,
       phone: user.phone,
+      currentPlan: user.currentPlan,
       role: user.role,
       referralCode: user.referralCode,
       referredBy: user.referredBy,
