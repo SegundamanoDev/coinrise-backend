@@ -8,7 +8,8 @@ const nodemailer = require("nodemailer");
 const Transaction = require("../models/Transaction"); // Assuming this model is defined elsewhere
 
 // Define constants
-const REFERRAL_BONUS = 15;
+const REFERRAL_BONUS = 30; // Define your referral bonus amount
+const PLATFORM_COIN = "USDT"; // Define a default coin for platform transactions like referral bonus or investments
 
 // Helper function to generate referral code
 function generateReferralCode() {
@@ -42,11 +43,10 @@ router.post("/register", async (req, res) => {
       phone,
       referralCode,
       referredBy,
-      // When a new user registers, this is their first "login"
       lastLoginAt: new Date(),
       lastLoginIpAddress: req.ip || req.connection.remoteAddress,
     });
-    console.log("New user registering:", newUser.email); // More descriptive log
+    
     await newUser.save();
 
     if (referredBy) {
@@ -56,33 +56,29 @@ router.post("/register", async (req, res) => {
         referrer.balance += REFERRAL_BONUS;
         await referrer.save();
 
+        // Ensure these match Transaction Model enums and required fields
         const referralTxn = new Transaction({
-          userId: referrer._id,
+          user: referrer._id, // Use 'user' as per Transaction model
           type: "referral_bonus",
           amount: REFERRAL_BONUS,
-          status: "completed",
-          description: `Referral bonus for inviting ${newUser.fullName}`,
+          coin: PLATFORM_COIN, // <--- ADDED: Specify coin for transaction
+          status: "completed", // Ensure 'completed' is in Transaction status enum
+          notes: `Referral bonus for inviting ${newUser.fullName} (${newUser.email})`, // Use 'notes'
         });
         await referralTxn.save();
       }
     }
 
-    // Optionally, log in the user immediately after registration
-    // and send a token/user object, similar to the login route.
-    // For now, keeping it as a simple success message.
     return res.status(201).json({
       success: true,
       message: "Registered successfully",
-      // You might want to return user data or a token here too
+      // Optionally, you might want to return user data or a token here too
       // user: {
-      //   id: newUser._id,
+      //   _id: newUser._id,
       //   fullName: newUser.fullName,
       //   email: newUser.email,
-      //   currency: newUser.currency,
-      //   balance: newUser.balance,
-      //   lastLoginAt: newUser.lastLoginAt,
-      //   lastLoginIpAddress: newUser.lastLoginIpAddress,
-      //   // ... other fields you want to expose
+      //   role: newUser.role, // Include role here if sending user data
+      //   // ... other fields
       // }
     });
   } catch (error) {
@@ -95,19 +91,20 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
   const user = await User.findOne({ email });
+ 
   if (!user) {
-    return res.status(400).json({ error: "Invalid credentials" });
+    return res.status(400).json({ message: "Invalid credentials" });
   }
 
   const isMatch = await user.comparePassword(password);
   if (!isMatch) {
-    return res.status(400).json({ error: "Invalid credentials" });
+    // This is where your data breach check might implicitly cause isMatch to be false
+    // if the password is found in a breach, or it might be a separate check before this.
+    return res.status(400).json({ message: "Invalid credentials" });
   }
 
   // --- NEW LOGIC FOR LAST LOGIN UPDATE ---
   user.lastLoginAt = new Date(); // Set current timestamp
-  // req.ip is generally preferred in Express as it handles X-Forwarded-For headers
-  // if your app is behind a proxy/load balancer.
   user.lastLoginIpAddress = req.ip || req.connection.remoteAddress;
   await user.save(); // Save the updated user to the database
   // --- END NEW LOGIC ---
@@ -118,24 +115,7 @@ router.post("/login", async (req, res) => {
 
   res.json({
     token: token,
-    user: {
-      _id: user._id,
-      fullName: user.fullName,
-      email: user.email,
-      country: user.country,
-      currency: user.currency,
-      phone: user.phone,
-      currentPlan: user.currentPlan,
-      role: user.role,
-      referralCode: user.referralCode,
-      referredBy: user.referredBy,
-      balance: user.balance,
-      totalProfits: user.totalProfits,
-      referralEarnings: user.referralEarnings,
-      lastLoginAt: user.lastLoginAt, // Include the new field
-      lastLoginIpAddress: user.lastLoginIpAddress, // Include the new field
-      // Do NOT send password or reset tokens
-    },
+    user,
   });
 });
 
@@ -153,6 +133,13 @@ router.put("/update-password/:userId", async (req, res) => {
   if (newPassword !== confirmPassword) {
     return res.status(400).json({ error: "Passwords do not match" });
   }
+
+  // --- Integrate potential password breach check for newPassword here ---
+  // You would need a function like checkPasswordBreach(newPassword)
+  // if (await checkPasswordBreach(newPassword)) {
+  //   return res.status(403).json({ message: "The new password was found in a data breach. Please choose a different one." });
+  // }
+  // --- End integration ---
 
   user.password = newPassword; // Will be hashed via pre-save hook
   await user.save();
@@ -179,7 +166,7 @@ router.post("/forgot-password", async (req, res) => {
     user.resetPasswordExpire = resetTokenExpire;
     await user.save();
 
-    const resetUrl = `https://coinrise-khaki.vercel.app/reset-password/${resetToken}`;
+    const resetUrl = `https://coinrise-khaki.vercel.app/reset-password/${resetToken}`; // Verify this URL in production
 
     // Email configuration
     const transporter = nodemailer.createTransport({
@@ -191,7 +178,7 @@ router.post("/forgot-password", async (req, res) => {
     });
 
     const mailOptions = {
-      from: '"Support" <noreply@trustvest.com>',
+      from: `"Support" <noreply@trustvest.com>`, // Verify your sender email
       to: user.email,
       subject: "Password Reset",
       html: `
@@ -227,6 +214,12 @@ router.put("/reset-password/:token", async (req, res) => {
 
     if (newPassword !== confirmPassword)
       return res.status(400).json({ error: "Passwords do not match" });
+
+    // --- Integrate potential password breach check for newPassword here ---
+    // if (await checkPasswordBreach(newPassword)) {
+    //   return res.status(403).json({ message: "The new password was found in a data breach. Please choose a different one." });
+    // }
+    // --- End integration ---
 
     user.password = newPassword;
     user.resetPasswordToken = undefined;
