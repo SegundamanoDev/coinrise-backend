@@ -1,7 +1,7 @@
 const cron = require("node-cron");
 const Investment = require("../models/Investment");
 const User = require("../models/User");
-const Transaction = require("../models/transaction");
+const Transaction = require("../models/Transaction");
 
 function startCronJobs() {
   // Runs every day at midnight
