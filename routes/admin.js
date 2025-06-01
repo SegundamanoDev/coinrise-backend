@@ -1,3 +1,5 @@
+// routes/admin.js
+
 const express = require("express");
 const { verifyToken } = require("../middlewares/auth.js");
 const Transaction = require("../models/Transaction.js");
@@ -5,6 +7,8 @@ const Investment = require("../models/Investment.js");
 const User = require("../models/User.js");
 
 const router = express.Router();
+
+// ... (Your existing /dashboard route remains unchanged) ...
 
 router.get("/dashboard", verifyToken, async (req, res) => {
   try {
@@ -25,6 +29,7 @@ router.get("/dashboard", verifyToken, async (req, res) => {
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
 
+    // This already gives you the total sum of active investments
     const totalActiveInvestments = await Investment.aggregate([
       { $match: { status: "active" } },
       { $group: { _id: null, total: { $sum: "$amount" } } },
@@ -149,7 +154,8 @@ router.get("/investments", verifyToken, async (req, res) => {
 
     const investments = await Investment.find(query)
       .sort({ createdAt: -1 })
-      .populate("userId", "fullName email");
+      .populate("userId", "fullName email"); // Populate userId for frontend display
+
     // Calculate summary stats
     const totalInvested = investments.reduce((acc, inv) => acc + inv.amount, 0);
     const totalROI = investments.reduce(
@@ -158,7 +164,7 @@ router.get("/investments", verifyToken, async (req, res) => {
     );
     const activeCount = investments.filter(
       (inv) => inv.status === "active"
-    ).length;
+    ).length; // This calculates the COUNT of active investments
     const completedCount = investments.filter(
       (inv) => inv.status === "completed"
     ).length;
@@ -168,7 +174,7 @@ router.get("/investments", verifyToken, async (req, res) => {
         totalInvested,
         totalROI,
         total: investments.length,
-        activeCount,
+        activeCount, // Now included in the summary
         completedCount,
       },
       investments,
@@ -196,12 +202,36 @@ router.patch("/investments/:id/complete", verifyToken, async (req, res) => {
     }
 
     const user = await User.findById(investment.userId);
+    if (!user) {
+      // Added check for user not found
+      return res
+        .status(404)
+        .json({ message: "Associated user not found for this investment." });
+    }
+
     const roiAmount = (investment.amount * investment.roi) / 100;
-    user.balance += investment.amount + roiAmount;
+    user.balance += investment.amount + roiAmount; // Add principal + ROI
     investment.status = "completed";
 
     await investment.save();
     await user.save();
+
+    // Create a transaction record for the completion payout
+    await Transaction.create({
+      user: investment.userId,
+      amount: investment.amount + roiAmount,
+      coin: "USDT", // Assuming USDT, adjust if needed
+      type: "investment_payout",
+      details: {
+        investmentId: investment._id,
+        planName: investment.plan,
+        roiPercent: investment.roi,
+        principalAmount: investment.amount,
+        roiAmount: roiAmount,
+      },
+      status: "approved",
+      notes: `Investment payout for plan: ${investment.plan} (ID: ${investment._id})`,
+    });
 
     res
       .status(200)
@@ -226,8 +256,26 @@ router.delete("/investments/:id", verifyToken, async (req, res) => {
 
     if (investment.status === "active") {
       const user = await User.findById(investment.userId);
-      user.balance += investment.amount;
-      await user.save();
+      if (user) {
+        // Only refund if user exists
+        user.balance += investment.amount;
+        await user.save();
+
+        // Create a transaction record for the refund
+        await Transaction.create({
+          user: investment.userId,
+          amount: investment.amount,
+          coin: "USDT",
+          type: "investment_refund",
+          details: {
+            investmentId: investment._id,
+            planName: investment.plan,
+            reason: "Investment deleted by admin, principal refunded",
+          },
+          status: "approved",
+          notes: `Refund for deleted investment: ${investment.plan} (ID: ${investment._id})`,
+        });
+      }
     }
 
     await Investment.findByIdAndDelete(req.params.id);
