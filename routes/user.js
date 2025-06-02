@@ -71,11 +71,6 @@ router.put("/profile", verifyToken, async (req, res) => {
 router.put("/password", verifyToken, async (req, res) => {
   const { currentPassword, newPassword, confirmPassword } = req.body;
 
-  // Add robust logging here to confirm this route is hit
-  console.log("Backend: /users/password route HIT!");
-  console.log("Backend: Request body for password change:", req.body);
-  console.log("Backend: User ID from token (req.user._id):", req.user._id);
-
   if (newPassword !== confirmPassword) {
     console.log("Backend: New password and confirm password do not match.");
     return res
@@ -161,8 +156,6 @@ router.get("/stats/count", verifyToken, async (req, res) => {
 
 // 6. GET Single User by ID (e.g., /api/users/:id) - Admin only
 router.get("/:id", verifyToken, async (req, res) => {
-  // Add robust logging here to confirm this route is hit when it shouldn't be for /password
-  console.log(`Backend: /users/:id GET route HIT! ID: "${req.params.id}"`);
   try {
     if (req.user && req.user.role !== "admin") {
       return res
@@ -184,29 +177,74 @@ router.get("/:id", verifyToken, async (req, res) => {
 
 // 7. PUT Update User by ID (e.g., /api/users/:id) - Admin only
 router.put("/:id", verifyToken, async (req, res) => {
-  // Add robust logging here to confirm this route is hit when it shouldn't be for /password
-  console.log(`Backend: /users/:id PUT route HIT! ID: "${req.params.id}"`);
   try {
     if (req.user && req.user.role !== "admin") {
       return res
         .status(403)
         .json({ message: "Access denied. Admin rights required." });
     }
-    const user = await User.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-    if (!user) return res.status(404).json({ message: "User not found" });
-    res.json(user);
+
+    const userId = req.params.id;
+
+    // Find the user first
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Iterate over the fields in req.body and apply updates
+    // This approach ensures that only fields present in req.body are updated
+    // and correctly triggers pre('save') hooks if 'password' is actually changed.
+    for (const key in req.body) {
+      if (req.body.hasOwnProperty(key)) {
+        // IMPORTANT: Handle password separately if it's explicitly part of the update.
+        // However, it's strongly recommended to use a separate route for password changes.
+        // If you are sending password from frontend in this general update,
+        // this is where you'd need special handling.
+        // For security, if this route is NOT meant for password changes,
+        // you should still strip it if it accidentally comes through.
+        if (key === "password") {
+          console.warn(
+            `Attempted to update password via general /users/:id PUT route for user ${userId}. This action was blocked.`
+          );
+          continue; // Skip the password field
+        }
+        user[key] = req.body[key];
+      }
+    }
+
+    // Save the modified user document.
+    // This will trigger pre('save') hooks and full schema validation.
+    await user.save();
+
+    // After updating, return the user *without* the password field
+    const userResponse = user.toObject(); // Convert Mongoose document to plain JS object
+    delete userResponse.password; // Remove password before sending to client
+
+    res.json(userResponse); // Send the updated user object (without password)
   } catch (err) {
-    // This catch block is where your "Cast to ObjectId failed for value 'password'" error *was* occurring
     console.error(
-      `Backend: Error in /users/:id PUT route with ID "${req.params.id}":`,
+      `Backend: Error in /users/:id PUT route for user ID "${req.params.id}":`,
       err
     );
-    res.status(500).json({ message: err.message });
+
+    // Provide more specific error messages
+    if (err.name === "CastError" && err.kind === "ObjectId") {
+      return res.status(400).json({ message: "Invalid User ID format." });
+    }
+    if (err.name === "ValidationError") {
+      // Mongoose validation error
+      const errors = Object.keys(err.errors).map(
+        (key) => err.errors[key].message
+      );
+      return res.status(400).json({ message: errors.join(", ") });
+    }
+
+    res
+      .status(500)
+      .json({ message: err.message || "An unexpected error occurred." });
   }
 });
-
 router.post("/topup-profit/:userId", verifyToken, async (req, res) => {
   const { amount, notes } = req.body;
   const parsedAmount = parseFloat(amount);
