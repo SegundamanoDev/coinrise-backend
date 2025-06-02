@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
 const { verifyToken } = require("../middlewares/auth");
+const Transaction = require("../models/Transaction");
 
 // ====================================================================
 // SECTION 1: SPECIFIC, LITERAL PATH ROUTES (MUST COME FIRST)
@@ -206,21 +207,41 @@ router.put("/:id", verifyToken, async (req, res) => {
   }
 });
 
-// 8. POST Top up profit (e.g., /api/users/topup-profit/:userId) - Admin only
 router.post("/topup-profit/:userId", verifyToken, async (req, res) => {
-  const { amount } = req.body;
+  const { amount, notes } = req.body;
+  const parsedAmount = parseFloat(amount);
+
+  // Basic validation
+  if (isNaN(parsedAmount) || parsedAmount <= 0) {
+    return res
+      .status(400)
+      .json({ message: "Invalid amount. Must be a positive number." });
+  }
+
   try {
     if (req.user && req.user.role !== "admin") {
       return res
         .status(403)
         .json({ message: "Access denied. Admin rights required." });
     }
-    const user = await User.findById(req.params.userId); // This correctly uses :userId
+
+    const user = await User.findById(req.params.userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    user.totalProfits += amount;
-    user.balance += amount;
+    user.totalProfits += parsedAmount;
+    user.balance += parsedAmount;
     await user.save();
+
+    // --- NEW: Create a transaction record for the top-up ---
+    await Transaction.create({
+      user: user._id,
+      amount: parsedAmount,
+      coin: "USDT", // Or whatever default coin you use for internal transfers
+      type: "profit", // This is the new type
+      status: "completed", // Admin actions are typically completed immediately
+      notes: notes || ` ${parsedAmount} Trading Profit Credited`, // Use provided notes or a default
+    });
+    // --- END NEW ---
 
     res.json({ message: "Profit topped up successfully", user });
   } catch (err) {

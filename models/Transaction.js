@@ -13,24 +13,25 @@ const transactionSchema = mongoose.Schema(
     },
     coin: {
       type: String,
-      required: true, // Keep as required, ensure it's provided or has a default
+      required: false, // Make this false for "topup_profit" if coin isn't always relevant
+      default: "USDT", // Set a default if it's not always provided
     },
     type: {
       type: String,
       required: true,
-      // ADDED 'investment' to the enum
       enum: [
         "deposit",
         "withdrawal",
         "upgrade_deposit",
         "referral_bonus",
         "investment",
+        "investment_payout",
+        "profit", // NEW: Added for admin top-ups
       ],
     },
     proofOfPayment: {
       type: String, // Path to the uploaded image
       required: function () {
-        // Only required for deposit/upgrade_deposit
         return this.type === "deposit" || this.type === "upgrade_deposit";
       },
     },
@@ -38,10 +39,8 @@ const transactionSchema = mongoose.Schema(
       type: String,
       required: true,
       default: "pending",
-      // ADDED 'approved', 'processed' and 'completed' to the enum
       enum: ["pending", "approved", "rejected", "processed", "completed"],
     },
-    // --- New fields for upgrade transactions (keep as is) ---
     planId: {
       type: String,
       required: function () {
@@ -54,9 +53,13 @@ const transactionSchema = mongoose.Schema(
         return this.type === "upgrade_deposit";
       },
     },
-    // --- End new fields ---
     notes: {
       type: String,
+    },
+    method: {
+      type: String,
+      required: false,
+      default: "USDT",
     },
   },
   {
