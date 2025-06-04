@@ -388,7 +388,7 @@ router.get("/deposits-history", verifyToken, async (req, res) => {
   }
 });
 
-// Get single transaction by ID
+// Get single transaction by ID.
 router.get("/:id", verifyToken, async (req, res) => {
   try {
     const transaction = await Transaction.findById(req.params.id).populate(

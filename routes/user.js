@@ -177,6 +177,7 @@ router.get("/:id", verifyToken, async (req, res) => {
 
 // 7. PUT Update User by ID (e.g., /api/users/:id) - Admin only
 router.put("/:id", verifyToken, async (req, res) => {
+  console.log(req.body);
   try {
     if (req.user && req.user.role !== "admin") {
       return res
