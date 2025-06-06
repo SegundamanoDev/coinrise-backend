@@ -31,6 +31,7 @@ const transactionSchema = mongoose.Schema(
         "profit", // NEW: Added for admin top-ups
       ],
     },
+
     paymentProof: {
       secure_url: { type: String, default: null },
       public_id: { type: String, default: null },
