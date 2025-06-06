@@ -31,9 +31,7 @@ const transactionSchema = mongoose.Schema(
     },
     proofOfPayment: {
       type: String, // Path to the uploaded image
-      required: function () {
-        return this.type === "deposit" || this.type === "upgrade_deposit";
-      },
+      
     },
     status: {
       type: String,
