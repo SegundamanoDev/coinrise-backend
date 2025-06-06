@@ -1,3 +1,5 @@
+// models/Transaction.js
+
 const mongoose = require("mongoose");
 
 const transactionSchema = mongoose.Schema(
@@ -29,12 +31,11 @@ const transactionSchema = mongoose.Schema(
         "profit", // NEW: Added for admin top-ups
       ],
     },
-    proofOfPayment: {
-      type: String, // Path to the uploaded image
-      required: function () {
-        return this.type === "deposit" || this.type === "upgrade_deposit";
-      },
+    paymentProof: {
+      secure_url: { type: String, default: null },
+      public_id: { type: String, default: null },
     },
+
     status: {
       type: String,
       required: true,
@@ -57,10 +58,18 @@ const transactionSchema = mongoose.Schema(
       type: String,
     },
     method: {
+      // This will now explicitly store the cryptocurrency symbol (e.g., "BTC", "USDT") for crypto transactions.
+      // For withdrawals, it could still be "Bank Transfer", "Crypto Wallet", etc.
       type: String,
       required: false,
       default: "USDT",
     },
+    // --- NEW FIELD: details to store additional transaction info like wallet addresses ---
+    details: {
+      type: mongoose.Schema.Types.Mixed, // Allows flexible schema-less data
+      default: {}, // Default to an empty object
+    },
+    // --- END NEW FIELD ---
   },
   {
     timestamps: true,

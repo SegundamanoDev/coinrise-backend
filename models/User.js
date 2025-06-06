@@ -16,6 +16,39 @@ const userSchema = new mongoose.Schema(
       ],
     },
     password: { type: String, required: true },
+    // --- NEW FIELD FOR AVATAR ---
+    avatar: {
+      type: String, // Stores the secure URL from Cloudinary
+      default: null, // Default to null if no avatar is uploaded
+    },
+    // --- END NEW FIELD ---
+    kycStatus: {
+      type: String,
+      enum: ["not_submitted", "pending", "approved", "rejected"],
+      default: "not_submitted",
+    },
+    kycDocuments: {
+      type: [
+        {
+          secure_url: String, // Store Cloudinary secure URL
+          public_id: String, // Store Cloudinary public ID for deletion/management
+          docType: {
+            type: String,
+            enum: ["proofOfId", "proofOfAddress"],
+            required: true,
+          },
+          uploadedAt: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+      ],
+      default: [],
+    },
+    kycRejectionReason: {
+      type: String,
+      default: null,
+    },
     country: String,
     currency: String,
     phone: String,
@@ -38,10 +71,10 @@ const userSchema = new mongoose.Schema(
     referralEarnings: { type: Number, default: 0 },
     resetPasswordToken: { type: String },
     resetPasswordExpire: { type: Date },
-    // --- NEW FIELDS FOR LAST LOGIN ---
+    // --- FIELDS FOR LAST LOGIN ---
     lastLoginAt: { type: Date, default: Date.now }, // Stores the timestamp of the last login
     lastLoginIpAddress: { type: String }, // Stores the IP address of the last login
-    // --- END NEW FIELDS ---
+    // --- END LAST LOGIN FIELDS ---
   },
   {
     timestamps: true, // Adds createdAt and updatedAt timestamps automatically

@@ -1,4 +1,4 @@
-// routes/transaction.js (Updated)
+// routes/transaction.js
 
 const express = require("express");
 const { verifyToken } = require("../middlewares/auth.js"); // Your JWT verification middleware
@@ -6,8 +6,61 @@ const Transaction = require("../models/Transaction.js");
 const User = require("../models/User.js");
 const router = express.Router();
 const upload = require("../utils/multer.js"); // Your Multer setup for file uploads
-const fs = require("fs"); // For file system operations (e.g., deleting proof on decline)
+const fs = require("fs"); // For file system operations (e.g., reading local file, deleting local file)
 const path = require("path"); // For path manipulation
+
+// --- NEW IMPORTS FOR CLOUDINARY ---
+const cloudinary = require("../utils/cloudinaryConfig"); // Your Cloudinary configuration
+// --- END NEW IMPORTS ---
+
+// --- Cloudinary Upload Helper Function (Now handles both buffer and path from Multer) ---
+// This function takes a file object (from Multer) and uploads it to Cloudinary.
+// It explicitly sets the 'upload_preset' and adds tags for organization.
+const uploadToCloudinary = async (file, customTags = []) => {
+  if (!file) {
+    return null;
+  }
+
+  let fileBuffer;
+  let mimetype = file.mimetype; // Multer provides mimetype regardless of storage type
+
+  if (file.buffer) {
+    // If Multer is configured with memoryStorage, file.buffer will be available
+    fileBuffer = file.buffer;
+  } else if (file.path) {
+    // If Multer is configured with diskStorage, file.path will be available
+    try {
+      fileBuffer = fs.readFileSync(file.path);
+    } catch (readError) {
+      console.error("Error reading file from disk:", readError);
+      throw new Error("Failed to read file from disk for Cloudinary upload.");
+    }
+  } else {
+    // If neither buffer nor path is available, it's an unexpected file object
+    throw new Error(
+      "File object does not contain required buffer or path for upload."
+    );
+  }
+
+  const b64 = fileBuffer.toString("base64");
+  const dataUri = `data:${mimetype};base64,${b64}`;
+
+  try {
+    // Upload the file to Cloudinary with the specified upload preset and tags
+    const result = await cloudinary.uploader.upload(dataUri, {
+      upload_preset: "segun", // Use the "segun" upload preset
+      resource_type: "auto", // Cloudinary will automatically detect if it's an image or raw (for PDF)
+      tags: customTags, // Add custom tags for Cloudinary management (e.g., 'deposit_proof', 'upgrade_proof')
+    });
+
+    // Return the secure URL and public ID of the uploaded file
+    return { secure_url: result.secure_url, public_id: result.public_id };
+  } catch (cloudinaryError) {
+    console.error("Cloudinary upload error:", cloudinaryError);
+    // Re-throw to be caught by the route's try-catch block
+    throw new Error("Failed to upload file to Cloudinary.");
+  }
+};
 
 // Helper function to update user balance (DRY principle)
 const updateUserBalance = async (
@@ -29,7 +82,7 @@ const updateUserBalance = async (
       if (action === "approve") {
         user.balance += amount;
       }
-      // No action needed for decline of deposit/bonus as balance wasn't deducted
+      // No action needed for decline of deposit/bonus as balance wasn't deducted initially
       break;
     case "withdrawal":
     case "investment":
@@ -38,138 +91,142 @@ const updateUserBalance = async (
       }
       // No action needed for approval of withdrawal/investment as balance was deducted initially
       break;
-    case "account_upgrade": // NEW: Handle account upgrade approval
+    case "account_upgrade": // Handle account upgrade approval
       if (action === "approve") {
-        // Assuming the upgrade fee is just a fee, not added to balance.
-        // Instead, update the user's account level.
-        // You'll need to define your upgrade logic here.
-        // For example, if you have a tiered system (Standard, Silver, Gold, Diamond)
-        // You might set a specific level, or increment based on previous level.
-        // For simplicity, let's just set them to 'Silver' as a base upgrade.
-        // In a real app, you might map amounts to levels.
-        // Or derive from transaction details if user picked a level
-        // user.upgradeCount = (user.upgradeCount || 0) + 1; // If you track upgrade counts
+        // You would define your upgrade logic here, e.g.,
+        // user.currentPlan = 'standard'; // Set a new plan based on the upgrade details
       }
-      // If an upgrade is declined, no balance change as it was a fee,
-      // but you might want to delete the uploaded proof file if it's no longer needed.
+      // If an upgrade is declined, no balance change as it was a fee
       break;
   }
   await user.save();
   return user;
 };
 
-// --- NEW ROUTE: Request Account Upgrade ---
+// --- MODIFIED ROUTE: Request Account Upgrade (Now explicitly sets method and details) ---
 router.post(
   "/upgrade-request",
   verifyToken,
-  upload.single("proof"),
+  upload.single("proof"), // 'proof' must match the field name in FormData
   async (req, res) => {
-    const { amount, coin, type, planId, planName } = req.body; // Added planId, planName
-
-    // Input validation
-    if (!amount || !coin || !type) {
-      if (req.file) {
-        // Clean up uploaded file if validation fails
-        fs.unlinkSync(req.file.path);
-      }
-      return res
-        .status(400)
-        .json({ message: "Amount, coin, and type are required." });
-    }
-
-    const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      if (req.file) fs.unlinkSync(req.file.path);
-      return res
-        .status(400)
-        .json({ message: "Invalid amount. Must be a positive number." });
-    }
-
-    // Proof of payment is required for 'deposit' and 'upgrade_deposit' types
-    if ((type === "deposit" || type === "upgrade_deposit") && !req.file) {
-      return res.status(400).json({
-        message: "Proof of payment is required for this transaction type.",
-      });
-    }
-
-    // Specific validation for 'upgrade_deposit' type
-    if (type === "upgrade_deposit") {
-      if (!planId || !planName) {
-        if (req.file) fs.unlinkSync(req.file.path);
-        return res.status(400).json({
-          message:
-            "Plan ID and Plan Name are required for upgrade transactions.",
-        });
-      }
-      // Optional: Add server-side validation to ensure planId and amount match predefined plans
-      // const selectedPlan = UPGRADE_PLANS.find(p => p.id === planId); // If you have UPGRADE_PLANS on backend
-      // if (!selectedPlan || selectedPlan.amount !== parsedAmount) {
-      //     if (req.file) fs.unlinkSync(req.file.path);
-      //     return res.status(400).json({ message: "Invalid plan or amount for upgrade." });
-      // }
-    }
+    const { amount, coin, type, planId, planName, depositWalletAddress } =
+      req.body; // Added depositWalletAddress
 
     try {
+      // Input validation
+      if (!amount || !coin || !type) {
+        return res
+          .status(400)
+          .json({ message: "Amount, coin, and type are required." });
+      }
+
+      const parsedAmount = parseFloat(amount);
+      if (isNaN(parsedAmount) || parsedAmount <= 0) {
+        return res
+          .status(400)
+          .json({ message: "Invalid amount. Must be a positive number." });
+      }
+
+      // Proof of payment is required for 'deposit' and 'upgrade_deposit' types
+      if ((type === "deposit" || type === "upgrade_deposit") && !req.file) {
+        return res.status(400).json({
+          message:
+            "Proof of payment file is required for this transaction type.",
+        });
+      }
+
+      // Specific validation for 'upgrade_deposit' type
+      if (type === "upgrade_deposit") {
+        if (!planId || !planName) {
+          return res.status(400).json({
+            message:
+              "Plan ID and Plan Name are required for upgrade transactions.",
+          });
+        }
+        if (!depositWalletAddress) {
+          // Wallet address is required for crypto upgrade deposits
+          return res.status(400).json({
+            message: "Deposit wallet address is required for crypto upgrade.",
+          });
+        }
+      }
+
       const user = await User.findById(req.user._id);
       if (!user) {
-        if (req.file) fs.unlinkSync(req.file.path);
         return res.status(404).json({ message: "User not found." });
       }
 
       const transactionData = {
         user: req.user._id,
         amount: parsedAmount,
-        coin: coin,
-        type: type,
+        coin: coin, // BTC, USDT (symbol)
+        type: type, // upgrade_deposit
         status: "pending",
+        method: coin, // METHOD IS NOW THE COIN SYMBOL (BTC, USDT)
       };
 
-      // Add proofOfPayment if a file was uploaded (for deposit/upgrade_deposit)
-      if (req.file) {
-        transactionData.proofOfPayment = `/uploads/proofs/${req.file.filename}`;
-      }
+      // Populate details object
+      transactionData.details = {
+        depositWalletAddress: depositWalletAddress, // The platform's wallet address for this deposit
+        // Add other details here if needed for upgrades
+      };
 
       // Add plan details if it's an upgrade
       if (type === "upgrade_deposit") {
         transactionData.planId = planId;
         transactionData.planName = planName;
+        // Merge plan details into general details if desired, or keep separate
+        transactionData.details.planName = planName; // Example: Also put planName in details
+      }
+
+      let uploadedProof = null;
+      // Upload file to Cloudinary and store URL/Public ID
+      if (req.file) {
+        uploadedProof = await uploadToCloudinary(req.file, [`${type}_proof`]);
+        transactionData.paymentProof = {
+          secure_url: uploadedProof.secure_url,
+          public_id: uploadedProof.public_id,
+        };
       }
 
       const transaction = new Transaction(transactionData);
       await transaction.save();
 
       res.status(201).json({
-        message: `${
-          type === "upgrade_deposit" ? "Account upgrade" : "Deposit"
-        } request submitted successfully! Awaiting admin approval.`,
+        message: `Account upgrade request submitted successfully! Awaiting admin approval.`,
         transaction: transaction,
       });
     } catch (error) {
-      console.error("Error initiating transaction:", error);
-      // Delete the uploaded file if there's a server error
-      if (req.file) {
+      console.error("Error initiating transaction (upgrade-request):", error);
+      // Clean up local file if Multer used disk storage and an error occurred before Cloudinary upload or DB save
+      if (req.file && req.file.path && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
       }
-      res
-        .status(500)
-        .json({ message: "Server error. Please try again later." });
+      res.status(500).json({
+        message: "Server error. Please try again later.",
+        error: error.message,
+      });
     }
   }
 );
-// --- Existing Routes (with minor adjustments) ---
 
-// Route for requesting deposit and withdrawal
+// --- MODIFIED ROUTE: Request Deposit/Withdrawal/Investment ---
 router.post(
   "/request",
   verifyToken,
-  upload.single("paymentProof"), // 'paymentProof' must match the field name in FormData
+  upload.single("paymentProof"), // 'paymentProof' for deposits only
   async (req, res) => {
     try {
-      const { type, amount, coin, method, details } = req.body;
+      const {
+        type,
+        amount,
+        coin,
+        method,
+        details,
+        depositWalletAddress,
+        withdrawalWalletAddress,
+      } = req.body;
       const userId = req.user._id;
-      const paymentProofPath = req.file
-        ? `/uploads/${req.file.filename}`
-        : undefined;
 
       if (!type || !amount) {
         return res
@@ -179,56 +236,111 @@ router.post(
 
       const user = await User.findById(userId);
       if (!user) {
-        if (req.file) fs.unlinkSync(req.file.path); // Delete file if user not found
         return res.status(404).json({ message: "User not found." });
       }
 
-      // Input validation based on type
-      // NOTE: Removed deposit proof validation here because upgrade_request now handles that for upgrades.
-      // If 'deposit' also uses paymentProof, ensure this validation is still relevant.
-      if (type === "deposit" && (!coin || !paymentProofPath)) {
-        return res
-          .status(400)
-          .json({ message: "Deposit requires coin type and payment proof." });
-      }
-      if (type === "withdrawal" && !method) {
-        return res
-          .status(400)
-          .json({ message: "Withdrawal requires a method." });
-      }
-      if (type === "investment" && !method) {
-        return res
-          .status(400)
-          .json({ message: "Investment requires a method (e.g., Staking)." });
-      }
-
-      // Balance check and initial deduction for withdrawals/investments
-      if (type === "withdrawal" || type === "investment") {
-        if (amount > user.balance) {
-          return res
-            .status(400)
-            .json({ message: `Insufficient balance for this ${type}.` });
-        }
-        user.balance -= amount; // Deduct immediately for withdrawals/investments
-        await user.save();
-      }
-
-      // Create the transaction
-      const transaction = await Transaction.create({
+      // Prepare base transaction data
+      const transactionData = {
         user: userId,
         type,
         amount: Number(amount),
-        coin: ["deposit", "account_upgrade"].includes(type) ? coin : undefined, // Only set coin for deposits/upgrades
-        method: method,
-        paymentProof: paymentProofPath, // Store the path to the uploaded file
-        details: details || {},
-      });
+        status: "pending",
+        details: {}, // Initialize details object
+      };
+
+      // Type-specific logic and validation
+      if (type === "deposit") {
+        if (!req.file) {
+          return res
+            .status(400)
+            .json({ message: "Deposit requires payment proof." });
+        }
+        if (!coin) {
+          // `coin` is now the symbol (BTC, USDT)
+          return res
+            .status(400)
+            .json({ message: "Deposit requires coin type." });
+        }
+        if (!depositWalletAddress) {
+          // The platform's wallet address user sent to
+          return res
+            .status(400)
+            .json({ message: "Deposit wallet address is required." });
+        }
+        transactionData.coin = coin; // e.g., "BTC"
+        transactionData.method = coin; // METHOD IS NOW THE COIN SYMBOL (e.g., "BTC")
+        transactionData.details.depositWalletAddress = depositWalletAddress; // The platform's address
+      } else if (type === "withdrawal") {
+        if (!method) {
+          // This `method` is "Bank Transfer" or "Crypto Wallet"
+          return res
+            .status(400)
+            .json({ message: "Withdrawal requires a method." });
+        }
+        if (method === "Crypto Wallet" && !withdrawalWalletAddress) {
+          // User's withdrawal crypto address
+          return res.status(400).json({
+            message: "Withdrawal via Crypto Wallet requires a wallet address.",
+          });
+        }
+
+        if (amount > user.balance) {
+          return res
+            .status(400)
+            .json({ message: `Insufficient balance for withdrawal.` });
+        }
+        user.balance -= amount; // Deduct immediately for withdrawals
+        await user.save();
+
+        transactionData.method = method; // e.g., "Crypto Wallet", "Bank Transfer"
+        transactionData.details.withdrawalMethod = method; // Redundant, but ensures it's in details if needed
+        if (withdrawalWalletAddress) {
+          transactionData.details.withdrawalWalletAddress =
+            withdrawalWalletAddress; // User's address
+        }
+        // You might add bank details to `transactionData.details` here if method is "Bank Transfer"
+        if (details) {
+          // Allow general details to be passed, e.g., for bank info
+          transactionData.details = { ...transactionData.details, ...details };
+        }
+      } else if (type === "investment") {
+        if (!method) {
+          return res
+            .status(400)
+            .json({ message: "Investment requires a method (e.g., Staking)." });
+        }
+        if (amount > user.balance) {
+          return res
+            .status(400)
+            .json({ message: `Insufficient balance for investment.` });
+        }
+        user.balance -= amount; // Deduct immediately for investments
+        await user.save();
+        transactionData.method = method;
+        if (details) {
+          transactionData.details = { ...transactionData.details, ...details };
+        }
+      }
+
+      let uploadedProof = null;
+      // Upload paymentProof to Cloudinary for deposits
+      if (type === "deposit" && req.file) {
+        uploadedProof = await uploadToCloudinary(req.file, ["deposit_proof"]);
+        transactionData.paymentProof = {
+          secure_url: uploadedProof.secure_url,
+          public_id: uploadedProof.public_id,
+        };
+      }
+
+      // Create the transaction
+      const transaction = await Transaction.create(transactionData);
 
       res.status(201).json(transaction);
     } catch (error) {
-      console.error("Error creating transaction:", error);
-      if (req.file) {
-        fs.unlinkSync(req.file.path); // Delete file if error occurred
+      console.error("Error creating transaction (request):", error);
+      // Clean up local file if Multer used disk storage and an error occurred before Cloudinary upload or DB save
+      if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
       }
       if (error.name === "ValidationError") {
         return res
@@ -259,10 +371,7 @@ router.get("/admin", verifyToken, async (req, res) => {
     if (status) filter.status = status;
 
     const transactions = await Transaction.find(filter)
-      .populate(
-        "user",
-        "fullName email balance currency accountLevel" // NEW: Populate accountLevel
-      )
+      .populate("user", "fullName email balance currency accountLevel")
       .sort({ createdAt: -1 });
 
     res.status(200).json(transactions);
@@ -311,23 +420,30 @@ router.patch("/transactions-update", verifyToken, async (req, res) => {
       transaction.amount,
       transaction.type,
       action,
-      transaction._id // Pass transaction ID for logging
+      transaction._id
     );
 
     transaction.status = newStatus;
     await transaction.save({ validateBeforeSave: false });
 
-    // If transaction is declined and it has a paymentProof, consider deleting the file
-    if (action === "decline" && transaction.paymentProof) {
-      const filePath = path.join(
-        __dirname,
-        "../uploads",
-        path.basename(transaction.paymentProof)
-      );
-      fs.unlink(filePath, (err) => {
-        if (err) console.error(`Error deleting file ${filePath}:`, err);
-        else console.log(`Deleted proof file: ${filePath}`);
-      });
+    // If transaction is declined AND it has a paymentProof with a public_id, delete from Cloudinary
+    if (
+      action === "decline" &&
+      transaction.paymentProof &&
+      transaction.paymentProof.public_id
+    ) {
+      try {
+        await cloudinary.uploader.destroy(transaction.paymentProof.public_id);
+        console.log(
+          `Deleted Cloudinary proof for transaction ${transaction._id}: ${transaction.paymentProof.public_id}`
+        );
+      } catch (cloudinaryErr) {
+        console.error(
+          `Failed to delete Cloudinary proof ${transaction.paymentProof.public_id}:`,
+          cloudinaryErr
+        );
+        // Log the error but don't prevent the transaction status update
+      }
     }
 
     // Return the updated transaction with populated user data for the frontend
@@ -354,7 +470,7 @@ router.get("/my", verifyToken, async (req, res) => {
   try {
     const userId = req.user._id;
     const transactions = await Transaction.find({ user: userId })
-      .populate("user", "fullName email balance currency accountLevel") // NEW: Populate accountLevel
+      .populate("user", "fullName email balance currency accountLevel")
       .sort({ createdAt: -1 });
 
     res.status(200).json(transactions);
@@ -371,12 +487,12 @@ router.get("/my", verifyToken, async (req, res) => {
 router.get("/deposits-history", verifyToken, async (req, res) => {
   try {
     const userId = req.user._id;
-    // Include 'account_upgrade' type in deposit history if you want to show it
+    // Include 'upgrade_deposit' type in deposit history if you want to show it
     const deposits = await Transaction.find({
       user: userId,
-      type: { $in: ["deposit", "account_upgrade"] }, // Include upgrade deposits
+      type: { $in: ["deposit", "upgrade_deposit"] }, // Changed from account_upgrade to upgrade_deposit
     })
-      .populate("user", "currency accountLevel") // Populate user with currency and accountLevel
+      .populate("user", "currency accountLevel")
       .sort({ createdAt: -1 });
 
     res.json(deposits);
@@ -393,7 +509,7 @@ router.get("/:id", verifyToken, async (req, res) => {
   try {
     const transaction = await Transaction.findById(req.params.id).populate(
       "user",
-      "fullName email balance currency accountLevel" // NEW: Populate accountLevel
+      "fullName email balance currency accountLevel"
     );
 
     if (!transaction) {
@@ -403,7 +519,7 @@ router.get("/:id", verifyToken, async (req, res) => {
     if (
       transaction.user._id.toString() !== req.user._id.toString() &&
       req.user &&
-      req.user.role !== "admin" // Assuming req.user.isAdmin is now req.user.role === 'admin'
+      req.user.role !== "admin"
     ) {
       return res
         .status(403)
