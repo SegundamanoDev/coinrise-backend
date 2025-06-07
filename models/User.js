@@ -53,6 +53,7 @@ const userSchema = new mongoose.Schema(
     currency: String,
     phone: String,
     address: String,
+    occupation: String,
     city: String,
     zip: String,
     currentPlan: {
@@ -71,10 +72,12 @@ const userSchema = new mongoose.Schema(
     referralEarnings: { type: Number, default: 0 },
     resetPasswordToken: { type: String },
     resetPasswordExpire: { type: Date },
-    // --- FIELDS FOR LAST LOGIN ---
-    lastLoginAt: { type: Date, default: Date.now }, // Stores the timestamp of the last login
-    lastLoginIpAddress: { type: String }, // Stores the IP address of the last login
-    // --- END LAST LOGIN FIELDS ---
+    lastLoginAt: { type: Date, default: Date.now },
+    lastLoginIpAddress: { type: String },
+    lastSeenAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt timestamps automatically

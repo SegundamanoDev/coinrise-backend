@@ -19,8 +19,16 @@ function generateReferralCode() {
 // POST /api/auth/register
 router.post("/register", async (req, res) => {
   try {
-    const { fullName, email, password, country, currency, phone, referredBy } =
-      req.body;
+    const {
+      fullName,
+      email,
+      password,
+      country,
+      currency,
+      phone,
+      occupation,
+      referredBy,
+    } = req.body;
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -41,12 +49,13 @@ router.post("/register", async (req, res) => {
       country,
       currency,
       phone,
+      occupation,
       referralCode,
       referredBy,
       lastLoginAt: new Date(),
       lastLoginIpAddress: req.ip || req.connection.remoteAddress,
     });
-    
+
     await newUser.save();
 
     if (referredBy) {
@@ -91,23 +100,19 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
   const user = await User.findOne({ email });
- 
+
   if (!user) {
     return res.status(400).json({ message: "Invalid credentials" });
   }
 
   const isMatch = await user.comparePassword(password);
   if (!isMatch) {
-    // This is where your data breach check might implicitly cause isMatch to be false
-    // if the password is found in a breach, or it might be a separate check before this.
     return res.status(400).json({ message: "Invalid credentials" });
   }
 
-  // --- NEW LOGIC FOR LAST LOGIN UPDATE ---
-  user.lastLoginAt = new Date(); // Set current timestamp
+  user.lastLoginAt = new Date();
   user.lastLoginIpAddress = req.ip || req.connection.remoteAddress;
-  await user.save(); // Save the updated user to the database
-  // --- END NEW LOGIC ---
+  await user.save();
 
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
     expiresIn: "7d",
@@ -178,7 +183,7 @@ router.post("/forgot-password", async (req, res) => {
     });
 
     const mailOptions = {
-      from: `"Support" <noreply@trustvest.com>`, // Verify your sender email
+      from: `"Support" <noreply@trustvest.com>`,
       to: user.email,
       subject: "Password Reset",
       html: `

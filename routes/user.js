@@ -73,7 +73,7 @@ router.get("/profile", verifyToken, async (req, res) => {
 
 // 2. PUT Update Current User's Profile (e.g., /api/users/profile)
 router.put("/profile", verifyToken, async (req, res) => {
-  const { fullName, country, phone, address, city, zip } = req.body;
+  const { fullName, country, phone, address, city, zip, occupation } = req.body;
   try {
     const user = await User.findById(req.user._id);
     if (user) {
@@ -83,6 +83,7 @@ router.put("/profile", verifyToken, async (req, res) => {
       user.address = address || user.address;
       user.city = city || user.city;
       user.zip = zip || user.zip;
+      user.occupation = occupation || user.occupation;
       const updatedUser = await user.save();
       res.json({
         fullName: updatedUser.fullName,
@@ -101,6 +102,7 @@ router.put("/profile", verifyToken, async (req, res) => {
         lastLoginIpAddress: updatedUser.lastLoginIpAddress,
         kycStatus: updatedUser.kycStatus,
         kycRejectionReason: updatedUser.kycRejectionReason,
+        occupation: updatedUser.occupation,
       });
     } else {
       res.status(404).json({ message: "User not found" });

@@ -12,8 +12,10 @@ dotenv.config();
 
 const app = express();
 app.use(morgan("dev"));
+
 app.use(express.json());
 app.use(cors());
+app.set("trust proxy", true);
 
 // --- NEW: Serve static files from the 'uploads' directory ---
 // This line makes files in the 'uploads' folder accessible via /uploads URL
