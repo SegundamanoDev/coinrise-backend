@@ -32,6 +32,7 @@ const transactionRoutes = require("./routes/transaction");
 const investmentRoutes = require("./routes/investment");
 const investmentPlanRoutes = require("./routes/investmentPlan");
 const adminRoutes = require("./routes/admin");
+const contactRoute = require("./routes/contact");
 
 // Use routes
 app.use("/api/investments", investmentRoutes);
@@ -41,6 +42,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api", contactRoute);
 
 startCronJobs();
 // Connect to MongoDB
