@@ -52,5 +52,15 @@ const verifyToken = async (req, res, next) => {
     res.status(403).json({ error: "Forbidden: Token verification failed" });
   }
 };
-
-module.exports = { verifyToken };
+function checkAccountLock(req, res, next) {
+  if (req.user && req.user.isLocked) {
+    return res.status(403).json({
+      message:
+        req.user.lockReason ||
+        "Your account is locked. Please contact support.",
+      code: "ACCOUNT_LOCKED", // A custom error code for frontend
+    });
+  }
+  next();
+}
+module.exports = { verifyToken, checkAccountLock };
