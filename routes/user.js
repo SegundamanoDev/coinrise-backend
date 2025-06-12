@@ -3,7 +3,7 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User"); // Your Mongoose User model
-const { verifyToken } = require("../middlewares/auth"); // Your authentication middleware
+const { verifyToken } = require("../middlewares/auth"); // Your authentication middleware (removed authorizeRoles)
 const Transaction = require("../models/Transaction"); // Your Transaction model
 
 // --- NEW IMPORTS FOR FILE UPLOAD AND CLOUDINARY ---
@@ -33,23 +33,18 @@ const upload = multer({
 });
 
 // --- Cloudinary Upload Helper Function (Made slightly more generic for re-use) ---
-// This function takes a file buffer and uploads it to Cloudinary using a preset.
-// It also takes an optional 'tags' array for better organization/searchability in Cloudinary.
 const uploadToCloudinary = async (file, customTags = []) => {
-  if (!file) return null; // Return null if no file is provided
+  if (!file) return null;
 
-  // Convert the file buffer to a Base64 data URI
   const b64 = Buffer.from(file.buffer).toString("base64");
   const dataUri = `data:${file.mimetype};base64,${b64}`;
 
-  // Upload the file to Cloudinary with the specified upload preset and tags
   const result = await cloudinary.uploader.upload(dataUri, {
-    upload_preset: "segun", // Use the "segun" upload preset as requested
-    resource_type: "auto", // Cloudinary will automatically detect if it's an image or raw (for PDF)
-    tags: customTags, // Add custom tags for Cloudinary management (e.g., 'avatar', 'kyc')
+    upload_preset: "segun",
+    resource_type: "auto",
+    tags: customTags,
   });
 
-  // Return the secure URL and public ID of the uploaded file
   return { secure_url: result.secure_url, public_id: result.public_id };
 };
 
@@ -61,6 +56,7 @@ const uploadToCloudinary = async (file, customTags = []) => {
 router.get("/profile", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select("-password");
+    console.log(user);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -94,7 +90,7 @@ router.put("/profile", verifyToken, async (req, res) => {
         city: updatedUser.city,
         zip: updatedUser.zip,
         currentPlan: updatedUser.currentPlan,
-        avatar: updatedUser.avatar, // Ensure avatar is returned
+        avatar: updatedUser.avatar,
         balance: updatedUser.balance,
         totalProfits: updatedUser.totalProfits,
         referralEarnings: updatedUser.referralEarnings,
@@ -103,6 +99,8 @@ router.put("/profile", verifyToken, async (req, res) => {
         kycStatus: updatedUser.kycStatus,
         kycRejectionReason: updatedUser.kycRejectionReason,
         occupation: updatedUser.occupation,
+        isBlocked: updatedUser.isBlocked,
+        role: updatedUser.role,
       });
     } else {
       res.status(404).json({ message: "User not found" });
@@ -170,7 +168,7 @@ router.put("/password", verifyToken, async (req, res) => {
 
 // --- NEW ROUTE FOR KYC SUBMISSION ---
 router.post(
-  "/kyc/submit", // This is the route you requested: the base path of the router
+  "/kyc/submit",
   verifyToken,
   upload.fields([
     { name: "proofOfId", maxCount: 1 },
@@ -200,8 +198,16 @@ router.post(
       }
 
       const [idUploadResult, addressUploadResult] = await Promise.all([
-        uploadToCloudinary(proofOfIdFile, ["kyc", "proof_of_id"]), // Added tags for clarity
-        uploadToCloudinary(proofOfAddressFile, ["kyc", "proof_of_address"]), // Added tags for clarity
+        uploadToCloudinary(proofOfIdFile, [
+          "kyc",
+          "proof_of_id",
+          `user_${userId}`,
+        ]),
+        uploadToCloudinary(proofOfAddressFile, [
+          "kyc",
+          "proof_of_address",
+          `user_${userId}`,
+        ]),
       ]);
 
       user.kycStatus = "pending";
@@ -229,13 +235,16 @@ router.post(
 
       await user.save();
 
+      const updatedUserResponse = user.toObject();
+      delete updatedUserResponse.password;
+
       res.status(200).json({
         message:
           "KYC documents submitted successfully for review. Your status has been updated to pending.",
-        user: user,
+        user: updatedUserResponse,
       });
     } catch (error) {
-      console.error("Error in POST /users route (KYC submission):", error);
+      console.error("Error in POST /users/kyc/submit route:", error);
 
       if (error instanceof multer.MulterError) {
         return res
@@ -259,13 +268,14 @@ router.post(
 
 // --- NEW ADMIN ROUTE FOR KYC STATUS UPDATE ---
 router.patch("/kyc/:id/status", verifyToken, async (req, res) => {
-  try {
-    if (!req.user || req.user.role !== "admin") {
-      return res
-        .status(403)
-        .json({ message: "Access denied. Admin rights required." });
-    }
+  // Admin role check
+  if (!req.user || req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ message: "Access denied. Admin rights required." });
+  }
 
+  try {
     const { id } = req.params;
     const { kycStatus, kycRejectionReason } = req.body;
 
@@ -312,11 +322,10 @@ router.patch("/kyc/:id/status", verifyToken, async (req, res) => {
 // --- END NEW ADMIN ROUTE FOR KYC STATUS UPDATE ---
 
 // --- NEW ROUTE FOR AVATAR UPLOAD ---
-// PUT /api/users/profile/avatar
 router.put(
-  "/profile/avatar", // Specific route for avatar upload
-  verifyToken, // User must be authenticated
-  upload.single("avatar"), // Expects a single file named 'avatar'
+  "/profile/avatar",
+  verifyToken,
+  upload.single("avatar"),
   async (req, res) => {
     try {
       const userId = req.user._id;
@@ -330,25 +339,15 @@ router.put(
         return res.status(400).json({ message: "No avatar file provided." });
       }
 
-      // Upload the new avatar to Cloudinary
       const avatarUploadResult = await uploadToCloudinary(req.file, [
         "avatar",
-        "user_profile",
+        `user_${userId}`,
       ]);
 
-      // If user had an old avatar, you might want to delete it from Cloudinary
-      // to save storage and keep things clean. This requires storing the public_id.
-      // Example:
-      // if (user.avatar_public_id) { // Assuming you stored public_id
-      //   await cloudinary.uploader.destroy(user.avatar_public_id);
-      // }
-
       user.avatar = avatarUploadResult.secure_url;
-      // user.avatar_public_id = avatarUploadResult.public_id; // Store if you need to delete later
 
       await user.save();
 
-      // Return the updated user profile (without password)
       const updatedUserResponse = user.toObject();
       delete updatedUserResponse.password;
 
@@ -377,12 +376,14 @@ router.put(
 
 // 4. GET All Users (e.g., /api/users) - Admin only
 router.get("/", verifyToken, async (req, res) => {
+  // Admin role check
+  if (!req.user || req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ message: "Access denied. Admin rights required." });
+  }
+
   try {
-    if (!req.user || req.user.role !== "admin") {
-      return res
-        .status(403)
-        .json({ message: "Access denied. Admin rights required." });
-    }
     const users = await User.find().select("-password").sort({ createdAt: -1 });
     res.json(users);
   } catch (err) {
@@ -393,6 +394,13 @@ router.get("/", verifyToken, async (req, res) => {
 
 // 5. GET Total User Count (e.g., /api/users/stats/count)
 router.get("/stats/count", verifyToken, async (req, res) => {
+  // Admin role check
+  if (!req.user || req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ message: "Access denied. Admin rights required." });
+  }
+
   try {
     const count = await User.countDocuments();
     res.json({ totalUsers: count });
@@ -408,12 +416,14 @@ router.get("/stats/count", verifyToken, async (req, res) => {
 
 // 6. GET Single User by ID (e.g., /api/users/:id) - Admin only
 router.get("/:id", verifyToken, async (req, res) => {
+  // Admin role check
+  if (!req.user || req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ message: "Access denied. Admin rights required." });
+  }
+
   try {
-    if (!req.user || req.user.role !== "admin") {
-      return res
-        .status(403)
-        .json({ message: "Access denied. Admin rights required." });
-    }
     const user = await User.findById(req.params.id).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
@@ -422,22 +432,25 @@ router.get("/:id", verifyToken, async (req, res) => {
       `Backend: Error in /users/:id GET route with ID "${req.params.id}":`,
       err
     );
+    if (err.name === "CastError" && err.kind === "ObjectId") {
+      return res.status(400).json({ message: "Invalid User ID format." });
+    }
     res.status(500).json({ message: err.message });
   }
 });
 
 // 7. PUT Update User by ID (e.g., /api/users/:id) - Admin only
 router.put("/:id", verifyToken, async (req, res) => {
+  // Admin role check
+  if (!req.user || req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ message: "Access denied. Admin rights required." });
+  }
+
   console.log(req.body);
   try {
-    if (!req.user || req.user.role !== "admin") {
-      return res
-        .status(403)
-        .json({ message: "Access denied. Admin rights required." });
-    }
-
     const userId = req.params.id;
-
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -445,19 +458,16 @@ router.put("/:id", verifyToken, async (req, res) => {
 
     for (const key in req.body) {
       if (req.body.hasOwnProperty(key)) {
-        if (key === "password") {
-          console.warn(
-            `Attempted to update password via general /users/:id PUT route for user ${userId}. This action was blocked.`
-          );
-          continue;
-        }
         if (
+          key === "password" ||
           key === "kycStatus" ||
           key === "kycRejectionReason" ||
-          key === "avatar"
+          key === "avatar" ||
+          key === "isBlocked" ||
+          key === "role"
         ) {
           console.warn(
-            `Attempted to update ${key} via general /users/:id PUT route. This action was blocked.`
+            `Attempted to update restricted field '${key}' via general /users/:id PUT route for user ${userId}. This action was ignored.`
           );
           continue;
         }
@@ -495,6 +505,13 @@ router.put("/:id", verifyToken, async (req, res) => {
 
 // 8. POST Top up Profit (e.g., /api/users/topup-profit/:userId) - Admin only
 router.post("/topup-profit/:userId", verifyToken, async (req, res) => {
+  // Admin role check
+  if (!req.user || req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ message: "Access denied. Admin rights required." });
+  }
+
   const { amount, notes } = req.body;
   const parsedAmount = parseFloat(amount);
 
@@ -505,12 +522,6 @@ router.post("/topup-profit/:userId", verifyToken, async (req, res) => {
   }
 
   try {
-    if (!req.user || req.user.role !== "admin") {
-      return res
-        .status(403)
-        .json({ message: "Access denied. Admin rights required." });
-    }
-
     const user = await User.findById(req.params.userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -527,27 +538,109 @@ router.post("/topup-profit/:userId", verifyToken, async (req, res) => {
       notes: notes || ` ${parsedAmount} Trading Profit Credited`,
     });
 
-    res.json({ message: "Profit topped up successfully", user });
+    const updatedUserResponse = user.toObject();
+    delete updatedUserResponse.password;
+    res.json({
+      message: "Profit topped up successfully",
+      user: updatedUserResponse,
+    });
   } catch (err) {
     console.error("Error topping up profit:", err);
+    if (err.name === "CastError" && err.kind === "ObjectId") {
+      return res.status(400).json({ message: "Invalid User ID format." });
+    }
     res.status(500).json({ message: err.message });
   }
 });
 
 // 9. DELETE User by ID (e.g., /api/users/:id) - Admin only
 router.delete("/:id", verifyToken, async (req, res) => {
+  // Admin role check
+  if (!req.user || req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ message: "Access denied. Admin rights required." });
+  }
+
   try {
-    if (!req.user || req.user.role !== "admin") {
-      return res
-        .status(403)
-        .json({ message: "Access denied. Admin rights required." });
-    }
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json({ message: "User deleted" });
   } catch (err) {
     console.error("Error deleting user:", err);
+    if (err.name === "CastError" && err.kind === "ObjectId") {
+      return res.status(400).json({ message: "Invalid User ID format." });
+    }
     res.status(500).json({ message: err.message });
+  }
+});
+
+// ====================================================================
+// SECTION: BLOCK/UNBLOCK USER (ADMIN ONLY)
+// ====================================================================
+
+router.patch("/:id/block-status", verifyToken, async (req, res) => {
+  // Admin role check
+  if (!req.user || req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ message: "Access denied. Admin rights required." });
+  }
+
+  try {
+    const { id } = req.params;
+    const { action } = req.body;
+
+    if (!action || (action !== "block" && action !== "unblock")) {
+      return res
+        .status(400)
+        .json({
+          message: 'Invalid action specified. Must be "block" or "unblock".',
+        });
+    }
+
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    if (action === "block") {
+      if (user.isBlocked) {
+        return res.status(400).json({ message: "User is already blocked." });
+      }
+      user.isBlocked = true;
+    } else {
+      if (!user.isBlocked) {
+        return res
+          .status(400)
+          .json({ message: "User is not currently blocked." });
+      }
+      user.isBlocked = false;
+    }
+
+    // Update lastSeenAt for blocked users to reflect their last activity
+    user.lastSeenAt = new Date();
+
+    await user.save();
+
+    const updatedUserResponse = user.toObject();
+    delete updatedUserResponse.password;
+
+    const message =
+      action === "block"
+        ? `${user.fullName} has been blocked successfully.`
+        : `${user.fullName} has been unblocked successfully.`;
+
+    res.status(200).json({ message, user: updatedUserResponse });
+  } catch (error) {
+    console.error("Error toggling user block status:", error);
+    if (error.name === "CastError" && error.kind === "ObjectId") {
+      return res.status(400).json({ message: "Invalid User ID format." });
+    }
+    res
+      .status(500)
+      .json({ message: "Server error: Could not update user status." });
   }
 });
 
